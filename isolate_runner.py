@@ -62,8 +62,7 @@ class IsolateRunner:
             check=False
         )
 
-    def run(self, source_code, language: Language,
-            input_data: str = "", time_limit: float = 1.0, memory_limit: int = 262144):
+    def run(self, source_code, language: Language, input_data: str = "", time_limit: float = 1.0, memory_limit: int = 262144):
 
         self.init_box()
         uid = uuid.uuid4().hex[:8]

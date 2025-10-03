@@ -8,6 +8,11 @@ build/
 develop-eggs/
 dist/
 downloads/
+envs/
+envs/*
+
+./envs/*
+
 eggs/
 .eggs/
 lib/
