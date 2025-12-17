@@ -31,18 +31,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Go o'rnatish
-# RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz \
-#     && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz \
-#     && rm go${GOLANG_VERSION}.linux-amd64.tar.gz
+RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz \
+    && rm go${GOLANG_VERSION}.linux-amd64.tar.gz
 
-# ENV PATH="/usr/local/go/bin:${PATH}"
-# ENV GOPATH="/go"
-# ENV PATH="${GOPATH}/bin:${PATH}"
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV PATH="${GOPATH}/bin:${PATH}"
 
-# # C++ kompilyatori uchun kerakli kutubxonalar
-# RUN apt-get update && apt-get install -y \
-#     libstdc++-11-dev \
-#     && rm -rf /var/lib/apt/lists/*
+# C++ kompilyatori uchun kerakli kutubxonalar
+RUN apt-get update && apt-get install -y \
+    libstdc++-11-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Isolate o'rnatish
 WORKDIR /tmp
@@ -57,17 +57,13 @@ RUN git clone https://github.com/ioi/isolate.git \
 RUN mkdir -p /var/local/lib/isolate \
     && chmod 755 /var/local/lib/isolate
 
-# Ishchi katalog
 WORKDIR /app
 
-# Python requirements ni avval ko'chirish (caching uchun)
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt
 
-# Barcha dastur fayllarini ko'chirish
 COPY . .
 
-# Portni ochish
 EXPOSE 8080
 
 # Konteyner ishga tushganda main.py ni ishlatish

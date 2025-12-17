@@ -1,0 +1,65 @@
+import asyncio
+from itertools import count
+from typing import AsyncGenerator
+from core.runner import execute_code
+
+
+def wrap_code(user_code: str, wrapper: dict, language: str) -> str:
+    if not wrapper:
+        return user_code
+    
+    top = wrapper.get("top_code", "")
+    bottom = wrapper.get("bottom_code", "")
+    return f"{top}\n{user_code}\n{bottom}"
+
+async def stream_execution(
+    language: str,
+    code: str,
+    test_cases: list,
+    wrapper: dict = None
+) -> AsyncGenerator[dict, None]:
+    """Test case'larni stream qilib bajarish"""
+    
+    # Wrapper bilan kod birlashtirish
+    final_code = wrap_code(code, wrapper, language)
+    
+    total = len(test_cases)
+    yield {"type": "start", "total": total}
+    
+    passed = 0
+    failed = 0
+    
+    for idx, test in enumerate(test_cases):
+        result = await execute_code(
+            language=language,
+            code=final_code,
+            test_input=test["input_txt"] or "",
+            expected_output=test["output_txt"] or ""
+        )
+        
+        if result["status"] == "AC":
+            passed += 1
+        else:
+            failed += 1
+        
+        yield {
+            "type": "test",
+            "index": idx,
+            "is_sample": test.get("is_sample", False),
+            "result": result,
+            "progress": round((idx + 1) / total * 100, 2),
+            "passed": passed,
+            "failed": failed
+        }
+        
+        await asyncio.sleep(0.01)
+    
+    yield {
+        "type": "complete",
+        "summary": {
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "success_rate": round(passed / total * 100, 2) if total > 0 else 0
+        }
+    }
