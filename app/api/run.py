@@ -45,7 +45,7 @@ async def run_code(problem_slug: str, request: RunRequest):
                 has_wrapper = data and data.get("execution_wrapper")
                 
                 if has_wrapper:
-                    final_code = wrap_code(request.code, data["execution_wrapper"], request.language_name)
+                    final_code = wrap_code(request.code, data["execution_wrapper"])
                 else:
                     final_code = request.code
                 
