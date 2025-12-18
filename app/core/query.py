@@ -29,10 +29,9 @@ async def get_tests_and_execution(problem_slug: str, language_slug: str):
     language_id = language["id"]
 
     test_cases = await pool.fetch("""
-        SELECT input_txt, output_txt, is_sample
+        SELECT input_txt, output_txt, is_correct
         FROM problems_testcase
         WHERE problem_id = $1
-        ORDER BY is_sample DESC, id
     """, problem_id)
 
     exec_wrapper = await pool.fetchrow("""
