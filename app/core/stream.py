@@ -3,8 +3,7 @@ from typing import AsyncGenerator
 from core.runner import execute_code
 
 
-def wrap_code(user_code: str, wrapper: dict, language: str) -> str:
-    """Wrapper bilan kodini birlashtirish"""
+def wrap_code(user_code: str, wrapper: dict, ) -> str:
     if not wrapper:
         return user_code
     
