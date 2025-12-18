@@ -89,7 +89,7 @@ async def run_code(problem_slug: str, request: RunRequest):
                     } for tc in request.test_cases])
                 
                 # Wrapper bilan kod birlashtirish
-                final_code = wrap_code(request.code, data["execution_wrapper"], request.language_name)
+                final_code = wrap_code(request.code, data["execution_wrapper"])
                 
                 # Submit stream execution
                 async for event in stream_execution(
