@@ -7,6 +7,21 @@ LANGUAGE_CONFIGS = {
         "compile": None,
         "run": ["/usr/bin/python3", "solution.py"]
     },
+    "javascript": {
+        "file": "solution.js",
+        "compile": None,
+        "run": ["/usr/bin/node", "solution.js"]
+    },
+    "typescript": {
+        "file": "solution.ts",
+        "compile": ["/usr/bin/tsc", "--target", "ES2020", "--module", "commonjs", "solution.ts"],
+        "run": ["/usr/bin/node", "solution.js"]
+    },
+    "go": {
+        "file": "solution.go",
+        "compile": ["/usr/bin/go", "build", "-o", "solution", "solution.go"],
+        "run": ["./solution"]
+    },
     "cpp": {
         "file": "solution.cpp",
         "compile": ["/usr/bin/g++", "-O2", "-std=c++17", "-o", "solution", "solution.cpp"],
@@ -59,6 +74,9 @@ class Isolate:
         # Input faylini yozish
         if stdin_data:
             (self.box / "input.txt").write_text(stdin_data, encoding="utf-8")
+        else:
+            # Bo'sh input fayl yaratish (stdin kutayotgan dasturlar uchun)
+            (self.box / "input.txt").write_text("", encoding="utf-8")
         
         isolate_cmd = [
             "isolate",
@@ -70,11 +88,11 @@ class Isolate:
             "--no-network",
             
             # ⏱ LIMITLAR
-            "--time=2",
-            "--wall-time=3",
-            "--mem=262144",      # 256MB
-            "--fsize=10240",     # 10MB
-            "--stack=8192",      # 8MB stack
+            "--time=2",           # CPU time limit
+            "--wall-time=3",      # Real time limit
+            "--mem=262144",       # 256MB
+            "--fsize=10240",      # 10MB file size
+            "--stack=8192",       # 8MB stack
             
             "--stdin=input.txt",
             "--stdout=out.txt",
@@ -94,7 +112,7 @@ class Isolate:
         except subprocess.TimeoutExpired:
             return {
                 "stdout": "",
-                "stderr": "Time Limit Exceeded",
+                "stderr": "Wall Time Limit Exceeded",
                 "meta": "status:TO\n"
             }
         

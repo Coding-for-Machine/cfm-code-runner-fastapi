@@ -1,7 +1,7 @@
 import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from fastapi.responses import StreamingResponse
 from core.runner import box_manager, execute_code
 from core.stream import stream_execution, wrap_code
@@ -9,127 +9,107 @@ from core.query import get_tests_and_execution
 
 
 class CustomInput(BaseModel):
-    value: str = Field(..., max_length=10000)
+    value: str = Field(..., max_length=1000)
+
+class TestCase(BaseModel):
+    input_txt: str
+    output_txt: str
 
 class RunRequest(BaseModel):
-    language_name: Literal["python", "cpp", "java", "c"]
+    language_name: Literal["python", "javascript", "typescript", "go", "cpp", "c", "java"]
     code: str = Field(..., min_length=1, max_length=50000)
     custom_input: Optional[CustomInput] = None
+    test_cases: Optional[List[TestCase]] = None
     
-    @validator('code')
-    def validate_code(cls, v):
-        dangerous = ['import os', 'import subprocess', '__import__', 'eval(', 'exec(']
-        for danger in dangerous:
-            if danger in v.lower():
-                raise ValueError(f"Xavfli kod: {danger}")
-        return v
-
-class SubmitRequest(BaseModel):
-    language_name: Literal["python", "cpp", "java", "c"]
-    code: str = Field(..., min_length=1, max_length=50000)
     
-    @validator('code')
-    def validate_code(cls, v):
-        dangerous = ['import os', 'import subprocess', '__import__', 'eval(', 'exec(']
-        for danger in dangerous:
-            if danger in v.lower():
-                raise ValueError(f"Xavfli kod: {danger}")
-        return v
 
 # ============= API ROUTER =============
 api = APIRouter(tags=["Code Execution"])
 
 @api.post("/run/{problem_slug}")
 async def run_code(problem_slug: str, request: RunRequest):
-    """Custom input bilan kodni test qilish (faqat sample test cases)"""
-    
-    # Database'dan ma'lumot olish
-    data = await get_tests_and_execution(problem_slug, request.language_name)
-    if not data:
-        raise HTTPException(
-            status_code=404,
-            detail="Problem yoki til topilmadi"
-        )
-    
-    # Faqat sample test case'lar
-    sample_tests = [tc for tc in data["test_cases"] if tc.get("is_sample", False)]
-    
-    if not sample_tests and not request.custom_input:
-        raise HTTPException(
-            status_code=404,
-            detail="Sample test case'lar topilmadi"
-        )
+    """
+    Code execution endpoint:
+    - Run mode: custom_input mavjud
+    - Submit mode: custom_input yo'q
+    """
     
     async def event_generator():
         try:
-            # Custom input bor bo'lsa
-            if request.custom_input:
-                yield f"data: {json.dumps({'type': 'start', 'total': 1}, ensure_ascii=False)}\n\n"
+            data = await get_tests_and_execution(problem_slug, request.language_name)
+            
+            # ====== RUN MODE (custom input bilan) ======
+            if request.custom_input and request.test_cases is None:
+                # Agar wrapper bo'lmasa, oddiy execute
+                if not data or not data.get("execution_wrapper"):
+                    yield f"data: {json.dumps({'type': 'start', 'total': 1}, ensure_ascii=False)}\n\n"
+                    
+                    result = await execute_code(
+                        language=request.language_name,
+                        code=request.code,
+                        test_input=request.custom_input.value,
+                        expected_output=""
+                    )
+                    
+                    # Agar stdin dan o'qish kerak bo'lsa
+                    if result.get("needs_input"):
+                        yield f"data: {json.dumps({'type': 'needs_input', 'message': 'Please provide input'}, ensure_ascii=False)}\n\n"
+                        return
+                    
+                    yield f"data: {json.dumps({'type': 'custom', 'result': result}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
+                
+                # Wrapper bilan execute
+                else:
+                    final_code = wrap_code(request.code, data["execution_wrapper"], request.language_name)
+                    
+                    # Bitta test case sifatida run qilish
+                    input_test_case = {
+                        "input_txt": request.custom_input.value,
+                        "output_txt": "",
+                        "is_sample": False
+                    }
+                    async for event in stream_execution(
+                        language=request.language_name,
+                        code=final_code,
+                        test_cases=[input_test_case],
+                        wrapper=data["execution_wrapper"],
+                        is_custom_run=True
+                    ):
+                        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    if request.test_cases:
+                        async for event in stream_execution(
+                            language=request.language_name,
+                            code=final_code,
+                            test_cases=request.test_cases,
+                            wrapper=data["execution_wrapper"],
+                            is_custom_run=True
+                        ):
+                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            
+            # ====== SUBMIT MODE (custom input yo'q) ======
+            else:
+                if not data or not data.get("test_cases"):
+                    raise HTTPException(status_code=400, detail="Test cases not found for this problem")
+                
+                all_test_cases = data["test_cases"]
+                if request.test_cases:
+                    all_test_cases.extend([tc.dict() for tc in request.test_cases])
                 
                 final_code = wrap_code(request.code, data["execution_wrapper"], request.language_name)
                 
-                result = await execute_code(
-                    language=request.language_name,
-                    code=final_code,
-                    test_input=request.custom_input.value,
-                    expected_output=""
-                )
-                
-                yield f"data: {json.dumps({'type': 'custom', 'result': result}, ensure_ascii=False)}\n\n"
-                yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
-            
-            # Sample test case'lar
-            else:
                 async for event in stream_execution(
                     language=request.language_name,
-                    code=request.code,
-                    test_cases=sample_tests,
-                    wrapper=data["execution_wrapper"]
+                    code=final_code,
+                    test_cases=all_test_cases,
+                    wrapper=data["execution_wrapper"],
+                    is_custom_run=False
                 ):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         
-        except Exception as e:
-            error_event = {"type": "error", "error": str(e)}
+        except HTTPException as he:
+            error_event = {"type": "error", "error": he.detail}
             yield f"data: {json.dumps(error_event)}\n\n"
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive"
-        }
-    )
-
-@api.post("/submit/{problem_slug}")
-async def submit_code(problem_slug: str, request: SubmitRequest):
-    """Barcha test case'lar bilan submit qilish"""
-    
-    # Database'dan ma'lumot olish
-    data = await get_tests_and_execution(problem_slug, request.language_name)
-    if not data:
-        raise HTTPException(
-            status_code=404,
-            detail="Problem yoki til topilmadi"
-        )
-    
-    if not data["test_cases"]:
-        raise HTTPException(
-            status_code=404,
-            detail="Test case'lar topilmadi"
-        )
-    
-    async def event_generator():
-        try:
-            async for event in stream_execution(
-                language=request.language_name,
-                code=request.code,
-                test_cases=data["test_cases"],
-                wrapper=data["execution_wrapper"]
-            ):
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-        
         except Exception as e:
             error_event = {"type": "error", "error": str(e)}
             yield f"data: {json.dumps(error_event)}\n\n"

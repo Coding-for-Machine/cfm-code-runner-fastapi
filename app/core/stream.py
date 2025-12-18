@@ -1,10 +1,9 @@
 import asyncio
-from itertools import count
 from typing import AsyncGenerator
 from core.runner import execute_code
 
 
-def wrap_code(user_code: str, wrapper: dict, language: str) -> str:
+def wrap_code(user_code: str, wrapper: dict) -> str:
     if not wrapper:
         return user_code
     
@@ -12,16 +11,15 @@ def wrap_code(user_code: str, wrapper: dict, language: str) -> str:
     bottom = wrapper.get("bottom_code", "")
     return f"{top}\n{user_code}\n{bottom}"
 
+
 async def stream_execution(
     language: str,
     code: str,
     test_cases: list,
-    wrapper: dict = None
+    wrapper: dict = None,
+    is_custom_run: bool = False
 ) -> AsyncGenerator[dict, None]:
     """Test case'larni stream qilib bajarish"""
-    
-    # Wrapper bilan kod birlashtirish
-    final_code = wrap_code(code, wrapper, language)
     
     total = len(test_cases)
     yield {"type": "start", "total": total}
@@ -32,11 +30,35 @@ async def stream_execution(
     for idx, test in enumerate(test_cases):
         result = await execute_code(
             language=language,
-            code=final_code,
+            code=code,
             test_input=test["input_txt"] or "",
             expected_output=test["output_txt"] or ""
         )
         
+        # Agar stdin input kerak bo'lsa
+        if result.get("needs_input"):
+            yield {
+                "type": "needs_input",
+                "message": "Code requires input from stdin"
+            }
+            return
+        
+        # Custom run uchun output qilish (expected bilan solishtirmasdan)
+        if is_custom_run:
+            yield {
+                "type": "custom",
+                "index": idx,
+                "result": {
+                    "status": result["status"],
+                    "output": result.get("output", ""),
+                    "error": result.get("error", ""),
+                    "execution_time": result.get("time", 0)
+                }
+            }
+            yield {"type": "complete"}
+            return
+        
+        # Submit mode uchun - expected bilan solishtirish
         if result["status"] == "AC":
             passed += 1
         else:
