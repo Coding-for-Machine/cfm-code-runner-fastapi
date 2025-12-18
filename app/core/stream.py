@@ -3,7 +3,8 @@ from typing import AsyncGenerator
 from core.runner import execute_code
 
 
-def wrap_code(user_code: str, wrapper: dict) -> str:
+def wrap_code(user_code: str, wrapper: dict, language: str) -> str:
+    """Wrapper bilan kodini birlashtirish"""
     if not wrapper:
         return user_code
     
@@ -51,11 +52,11 @@ async def stream_execution(
                     "status": result["status"],
                     "output": result.get("output", ""),
                     "error": result.get("error", ""),
-                    "execution_time": result.get("time", 0)
+                    "time": result.get("time", 0)
                 }
             }
-            yield {"type": "complete"}
-            return
+            # Custom run'da har bir test uchun natija
+            continue
         
         # Submit mode uchun - expected bilan solishtirish
         if result["status"] == "AC":
@@ -82,5 +83,5 @@ async def stream_execution(
             "passed": passed,
             "failed": failed,
             "success_rate": round(passed / total * 100, 2) if total > 0 else 0
-        }
+        } if not is_custom_run else None
     }
