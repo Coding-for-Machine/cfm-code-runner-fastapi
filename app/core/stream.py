@@ -16,7 +16,6 @@ async def stream_execution(
     language: str,
     code: str,
     test_cases: list,
-    wrapper: dict = None,
     is_custom_run: bool = False
 ) -> AsyncGenerator[dict, None]:
     """Test case'larni stream qilib bajarish"""

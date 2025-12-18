@@ -61,7 +61,7 @@ async def run_code(problem_slug: str, request: RunRequest):
                 
                 # Wrapper bilan execute
                 else:
-                    final_code = wrap_code(request.code, data["execution_wrapper"], request.language_name)
+                    final_code = wrap_code(request.code, data["execution_wrapper"])
                     
                     # Bitta test case sifatida run qilish
                     input_test_case = {
@@ -73,7 +73,6 @@ async def run_code(problem_slug: str, request: RunRequest):
                         language=request.language_name,
                         code=final_code,
                         test_cases=[input_test_case],
-                        wrapper=data["execution_wrapper"],
                         is_custom_run=True
                     ):
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
