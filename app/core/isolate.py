@@ -99,7 +99,7 @@ class Isolate:
             
             # 🔐 XAVFSIZLIK SOZLAMALARI
             "--processes=50",       # Ko'p jarayon uchun (Java, Go)
-            "--no-network",         # Tarmoq yo'q
+            # "--no-network" parametri eski versiyalarda yo'q
             
             # ⏱ RESURS LIMITLARI
             "--time=2",             # CPU time limit (2 soniya)
