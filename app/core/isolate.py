@@ -3,7 +3,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-# ================== LANGUAGE CONFIGS ==================
+# =====================================================
+# LANGUAGE CONFIGURATIONS
+# =====================================================
 
 LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "python": {
@@ -22,7 +24,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
             "/usr/bin/tsc",
             "--target", "ES2020",
             "--module", "commonjs",
-            "solution.ts"
+            "solution.ts",
         ],
         "run": ["/usr/bin/node", "solution.js"],
     },
@@ -33,12 +35,27 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
     },
     "cpp": {
         "file": "solution.cpp",
-        "compile": ["/usr/bin/g++", "-O2", "-std=c++17", "solution.cpp", "-o", "solution"],
+        "compile": [
+            "/usr/bin/g++",
+            "-O2",
+            "-std=c++17",
+            "solution.cpp",
+            "-o",
+            "solution",
+        ],
         "run": ["./solution"],
     },
     "c": {
         "file": "solution.c",
-        "compile": ["/usr/bin/gcc", "-O2", "-std=c11", "solution.c", "-lm", "-o", "solution"],
+        "compile": [
+            "/usr/bin/gcc",
+            "-O2",
+            "-std=c11",
+            "solution.c",
+            "-lm",
+            "-o",
+            "solution",
+        ],
         "run": ["./solution"],
     },
     "java": {
@@ -49,7 +66,9 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
 }
 
 
-# ================== ISOLATE CLASS ==================
+# =====================================================
+# ISOLATE SANDBOX
+# =====================================================
 
 class Isolate:
     """
@@ -61,7 +80,7 @@ class Isolate:
         self.base = Path(f"/var/local/lib/isolate/{box_id}")
         self.box = self.base / "box"
 
-    # ---------- INIT ----------
+    # ---------------- INIT ----------------
 
     def init(self) -> None:
         try:
@@ -78,7 +97,7 @@ class Isolate:
                 f"Isolate init failed: {e.stderr.decode(errors='ignore')}"
             )
 
-    # ---------- CLEANUP ----------
+    # ---------------- CLEANUP ----------------
 
     def cleanup(self) -> None:
         try:
@@ -88,50 +107,50 @@ class Isolate:
                 capture_output=True,
             )
         except Exception:
-            pass  # cleanup xatolari ignore qilinadi
+            pass
 
-    # ---------- RUN COMMAND ----------
+    # ---------------- RUN ----------------
 
-    def run(self, cmd: List[str], stdin_data: Optional[str] = None) -> Dict:
+    def run(self, cmd: List[str], stdin_data: Optional[str] = "") -> Dict:
         """
         Sandbox ichida komanda bajarish
         """
 
-        # Fayllar faqat box/ ichida bo'lishi shart
-        meta_file = self.box / "meta.txt"
+        # Fayllar
         input_file = self.box / "input.txt"
+        meta_file = self.box / "meta.txt"
+        stdout_file = self.box / "out.txt"
+        stderr_file = self.box / "err.txt"
 
-        if stdin_data:
-            input_file.write_text(stdin_data, encoding="utf-8")
+        # 🔥 STDIN HAR DOIM BERILADI (bo'sh bo'lsa ham)
+        input_file.write_text(stdin_data or "", encoding="utf-8")
 
         isolate_cmd = [
             "isolate",
             f"--box-id={self.box_id}",
             "--run",
 
-            # ===== LIMITLAR =====
+            # ===== LIMITS =====
             "--time=2",
             "--wall-time=5",
-            "--mem=524288",     # 512MB
-            "--fsize=51200",    # 50MB
-            "--stack=262144",   # 256MB
+            "--mem=524288",      # 512 MB
+            "--fsize=51200",     # 50 MB
+            "--stack=262144",    # 256 MB
 
-            # ===== I/O =====
+            # ===== IO =====
+            "--stdin=input.txt",
             "--stdout=out.txt",
             "--stderr=err.txt",
             "--meta=meta.txt",
         ]
 
-        if stdin_data:
-            isolate_cmd.append("--stdin=input.txt")
-
         isolate_cmd.append("--")
-        isolate_cmd.extend(cmd)   # 🔥 MUHIM
+        isolate_cmd.extend(cmd)
 
         try:
             result = subprocess.run(
                 isolate_cmd,
-                cwd=self.box,     # 🔥 MUHIM
+                cwd=self.box,   # 🔥 MUHIM
                 timeout=10,
                 check=False,
             )
@@ -155,13 +174,9 @@ class Isolate:
                 pass
             return ""
 
-        stdout = read_file(self.box / "out.txt")
-        stderr = read_file(self.box / "err.txt")
-        meta = read_file(meta_file)
-
         return {
-            "stdout": stdout,
-            "stderr": stderr,
-            "meta": meta,
+            "stdout": read_file(stdout_file),
+            "stderr": read_file(stderr_file),
+            "meta": read_file(meta_file),
             "exitcode": exitcode,
         }
