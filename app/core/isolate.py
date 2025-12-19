@@ -87,9 +87,14 @@ class Isolate:
         """
         meta = self.box / "meta.txt"
         
-        # Input faylini yozish (bo'sh bo'lsa ham)
+        # Input faylini DOIM yozish
         input_file = self.box / "input.txt"
-        input_file.write_text(stdin_data if stdin_data else "", encoding="utf-8")
+        try:
+            input_file.write_text(stdin_data, encoding="utf-8")
+            # DEBUG
+            print(f"[DEBUG] Input written to {input_file}: {repr(stdin_data[:50])}")
+        except Exception as e:
+            print(f"[ERROR] Failed to write input: {e}")
         
         # Isolate komandasi
         isolate_cmd = [
@@ -105,7 +110,7 @@ class Isolate:
             "--stack=262144",       # 256MB stack
             
             # 📁 I/O
-            "--stdin=input.txt",
+            f"--stdin={input_file.name}",  # Fayl nomi (box ichida)
             "--stdout=out.txt",
             "--stderr=err.txt",
             f"--meta={meta}",
@@ -146,6 +151,9 @@ class Isolate:
         try:
             if (self.box / "err.txt").exists():
                 stderr = (self.box / "err.txt").read_text(errors="ignore").strip()
+                # DEBUG: stderr log
+                if stderr:
+                    print(f"[DEBUG] Box {self.box_id} stderr:", stderr[:200])
         except:
             pass
         
