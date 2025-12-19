@@ -102,23 +102,26 @@ class Isolate:
             "--run",
             
             # ⏱ RESURS LIMITLARI
-            "--time=2",             # CPU time limit (2 soniya)
-            "--wall-time=5",        # Real time limit (5 soniya)
-            "--mem=524288",         # 512MB xotira
-            "--fsize=51200",        # 50MB fayl hajmi
-            "--stack=262144",       # 256MB stack
+            "--time=2",
+            "--wall-time=5",
+            "--mem=524288",
+            "--fsize=51200",
+            "--stack=262144",
             
             # 📁 I/O
             "--stdout=out.txt",
             "--stderr=err.txt",
-            "--meta=meta.txt",      # Base directoriyda
+            "--meta=meta.txt",
         ]
         
         # STDIN faqat input bor bo'lsagina
         if stdin_data:
-            isolate_cmd.insert(-3, "--stdin=input.txt")
+            isolate_cmd.append("--stdin=input.txt")
         
+        # Komanda ajratuvchi
         isolate_cmd.append("--")
+        
+        # Bajariladigan komanda
         isolate_cmd.extend(cmd) + cmd
         
         try:
