@@ -71,10 +71,6 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
 # =====================================================
 
 class Isolate:
-    """
-    Isolate sandbox wrapper
-    """
-
     def __init__(self, box_id: int):
         self.box_id = box_id
         self.base = Path(f"/var/local/lib/isolate/{box_id}")
@@ -112,17 +108,12 @@ class Isolate:
     # ---------------- RUN ----------------
 
     def run(self, cmd: List[str], stdin_data: Optional[str] = "") -> Dict:
-        """
-        Sandbox ichida komanda bajarish
-        """
-
-        # Fayllar
         input_file = self.box / "input.txt"
         meta_file = self.box / "meta.txt"
         stdout_file = self.box / "out.txt"
         stderr_file = self.box / "err.txt"
 
-        # 🔥 STDIN HAR DOIM BERILADI (bo'sh bo'lsa ham)
+        # STDIN HAR DOIM BERILADI (bo'sh bo'lsa ham)
         input_file.write_text(stdin_data or "", encoding="utf-8")
 
         isolate_cmd = [
@@ -143,7 +134,7 @@ class Isolate:
             "--stderr=err.txt",
             "--meta=meta.txt",
         ]
-
+        """isolate --box-id={id} --run --time=2 --wall-time=5 --mem=524288 --fsize=51200 --stack=262144 --stdin=input.txt --stdout=out.txt --stderr=err.txt --meta=meta.txt"""
         isolate_cmd.append("--")
         isolate_cmd.extend(cmd)
 

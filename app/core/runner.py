@@ -32,6 +32,7 @@ async def execute_code(
         # Box olish
         box_id = await box_manager.acquire()
         isolate = Isolate(box_id)
+        # isolate --box-id={box_id} --init"
         isolate.init()
         
         # Til konfiguratsiyasini olish
@@ -44,6 +45,7 @@ async def execute_code(
             }
         
         # Kod faylini yozish
+        # /var/local/lib/isolate/{box_id}/box/solution.{py, js, ts}
         code_file = isolate.box / config["file"]
         code_file.write_text(code, encoding="utf-8")
         
@@ -68,13 +70,13 @@ async def execute_code(
         exec_time = float(time_match.group(1)) if time_match else 0
         
         # ====== TIME LIMIT EXCEEDED ======
-        if "status:TO" in meta or "time-wall" in meta:
-            return {
-                "status": "TLE",
-                "error": "Time Limit Exceeded",
-                "output": result["stdout"][:200],
-                "time": exec_time
-            }
+        # if "status:TO" in meta or "time-wall" in meta:
+        #     return {
+        #         "status": "TLE",
+        #         "error": "Time Limit Exceeded",
+        #         "output": result["stdout"][:200],
+        #         "time": exec_time
+        #     }
         
         # ====== RUNTIME ERROR (RE) ======
         if "status:RE" in meta or result.get("exitcode", 0) != 0:
