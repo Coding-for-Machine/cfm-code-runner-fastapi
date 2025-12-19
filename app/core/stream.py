@@ -3,7 +3,8 @@ from typing import AsyncGenerator
 from core.runner import execute_code
 
 
-def wrap_code(user_code: str, wrapper: dict, ) -> str:
+def wrap_code(user_code: str, wrapper: dict) -> str:
+    """User code'ni wrapper bilan birlashtirish"""
     if not wrapper:
         return user_code
     
@@ -18,7 +19,18 @@ async def stream_execution(
     test_cases: list,
     is_custom_run: bool = False
 ) -> AsyncGenerator[dict, None]:
-    """Test case'larni stream qilib bajarish"""
+    """
+    Test case'larni stream qilib bajarish
+    
+    Args:
+        language: Dasturlash tili
+        code: Bajarish uchun kod
+        test_cases: Test case'lar ro'yxati
+        is_custom_run: Custom run rejimi (True) yoki Submit (False)
+    
+    Yields:
+        dict: Bajarilish jarayoni haqida ma'lumotlar
+    """
     
     total = len(test_cases)
     yield {"type": "start", "total": total}
@@ -27,22 +39,25 @@ async def stream_execution(
     failed = 0
     
     for idx, test in enumerate(test_cases):
+        # Test case'ni bajarish
         result = await execute_code(
             language=language,
             code=code,
-            test_input=test["input_txt"] or "",
-            expected_output=test["output_txt"] or ""
+            test_input=test.get("input_txt", ""),
+            expected_output=test.get("output_txt", "")
         )
         
-        # Agar stdin input kerak bo'lsa
-        if result.get("needs_input"):
+        # NEEDS_INPUT holatini tekshirish (birinchi navbatda!)
+        if result.get("status") == "NEEDS_INPUT":
             yield {
                 "type": "needs_input",
-                "message": "Code requires input from stdin"
+                "message": "Program requires input from stdin",
+                "index": idx,
+                "error": result.get("error", "")
             }
             return
         
-        # Custom run uchun output qilish (expected bilan solishtirmasdan)
+        # ====== CUSTOM RUN MODE ======
         if is_custom_run:
             yield {
                 "type": "custom",
@@ -54,10 +69,10 @@ async def stream_execution(
                     "time": result.get("time", 0)
                 }
             }
-            # Custom run'da har bir test uchun natija
             continue
         
-        # Submit mode uchun - expected bilan solishtirish
+        # ====== SUBMIT MODE ======
+        # Passed/Failed hisobi
         if result["status"] == "AC":
             passed += 1
         else:
@@ -73,8 +88,10 @@ async def stream_execution(
             "failed": failed
         }
         
+        # Kichik kutish (stream effect uchun)
         await asyncio.sleep(0.01)
     
+    # Yakuniy natija
     yield {
         "type": "complete",
         "summary": {

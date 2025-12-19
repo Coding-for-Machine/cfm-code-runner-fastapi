@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from fastapi.responses import StreamingResponse
-from core.runner import box_manager, execute_code
+from core.runner import execute_code
 from core.stream import stream_execution, wrap_code
 from core.query import get_tests_and_execution
 
@@ -11,10 +11,12 @@ from core.query import get_tests_and_execution
 class CustomInput(BaseModel):
     value: str = Field(..., max_length=1000)
 
+
 class TestCase(BaseModel):
     input_txt: str
     output_txt: str
     is_sample: bool = False
+
 
 class RunRequest(BaseModel):
     language_name: Literal["python", "javascript", "typescript", "go", "cpp", "c", "java"]
@@ -26,12 +28,13 @@ class RunRequest(BaseModel):
 # ============= API ROUTER =============
 api = APIRouter(tags=["Code Execution"])
 
+
 @api.post("/run/{problem_slug}")
 async def run_code(problem_slug: str, request: RunRequest):
     """
     Code execution endpoint:
-    - Run mode: custom_input mavjud (test_cases bilan yoki bo'lmasdan)
-    - Submit mode: custom_input yo'q, faqat test_cases (DB + user test cases)
+    - Run mode: custom_input mavjud
+    - Submit mode: custom_input yo'q, faqat test_cases
     """
     
     async def event_generator():
@@ -56,14 +59,17 @@ async def run_code(problem_slug: str, request: RunRequest):
                     "is_sample": False
                 }
                 
-                # Barcha test cases'larni yig'ish (custom + user test cases)
+                # Barcha test cases'larni yig'ish
                 run_tests = [custom_test]
                 if request.test_cases:
-                    run_tests.extend([{
-                        "input_txt": tc.input_txt,
-                        "output_txt": tc.output_txt,
-                        "is_sample": tc.is_sample
-                    } for tc in request.test_cases])
+                    run_tests.extend([
+                        {
+                            "input_txt": tc.input_txt,
+                            "output_txt": tc.output_txt,
+                            "is_sample": tc.is_sample
+                        } 
+                        for tc in request.test_cases
+                    ])
                 
                 # Stream execution
                 async for event in stream_execution(
@@ -77,16 +83,22 @@ async def run_code(problem_slug: str, request: RunRequest):
             # ====== SUBMIT MODE (custom_input yo'q) ======
             else:
                 if not data or not data.get("test_cases"):
-                    raise HTTPException(status_code=400, detail="Test cases not found for this problem")
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Test cases not found for this problem"
+                    )
                 
-                # DB test cases + user test cases (agar bor bo'lsa)
-                all_test_cases = data["test_cases"]
+                # DB test cases + user test cases
+                all_test_cases = data["test_cases"].copy()
                 if request.test_cases:
-                    all_test_cases.extend([{
-                        "input_txt": tc.input_txt,
-                        "output_txt": tc.output_txt,
-                        "is_sample": tc.is_sample
-                    } for tc in request.test_cases])
+                    all_test_cases.extend([
+                        {
+                            "input_txt": tc.input_txt,
+                            "output_txt": tc.output_txt,
+                            "is_sample": tc.is_sample
+                        } 
+                        for tc in request.test_cases
+                    ])
                 
                 # Wrapper bilan kod birlashtirish
                 final_code = wrap_code(request.code, data["execution_wrapper"])
@@ -121,6 +133,8 @@ async def run_code(problem_slug: str, request: RunRequest):
 @api.get("/status")
 async def get_status():
     """Box status monitoring"""
+    from core.runner import box_manager
+    
     return {
         "total_boxes": 1000,
         "used_boxes": len(box_manager._used_boxes),

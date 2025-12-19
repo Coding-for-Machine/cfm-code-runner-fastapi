@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+# Til konfiguratsiyalari
 LANGUAGE_CONFIGS = {
     "python": {
         "file": "solution.py",
@@ -29,7 +30,7 @@ LANGUAGE_CONFIGS = {
     },
     "c": {
         "file": "solution.c",
-        "compile": ["/usr/bin/gcc", "-O2", "-o", "solution", "solution.c"],
+        "compile": ["/usr/bin/gcc", "-O2", "-std=c11", "-o", "solution", "solution.c", "-lm"],
         "run": ["./solution"]
     },
     "java": {
@@ -39,13 +40,17 @@ LANGUAGE_CONFIGS = {
     }
 }
 
+
 class Isolate:
+    """Isolate sandbox manager"""
+    
     def __init__(self, box_id: int):
         self.box_id = box_id
         self.base = Path(f"/var/local/lib/isolate/{box_id}")
         self.box = self.base / "box"
 
     def init(self):
+        """Sandbox'ni initsializatsiya qilish"""
         try:
             subprocess.run(
                 ["isolate", f"--box-id={self.box_id}", "--init"],
@@ -54,11 +59,12 @@ class Isolate:
                 timeout=5
             )
         except subprocess.TimeoutExpired:
-            raise Exception("Isolate init timeout")
+            raise Exception(f"Isolate init timeout for box {self.box_id}")
         except subprocess.CalledProcessError as e:
             raise Exception(f"Isolate init failed: {e.stderr.decode()}")
 
     def cleanup(self):
+        """Sandbox'ni tozalash"""
         try:
             subprocess.run(
                 ["isolate", f"--box-id={self.box_id}", "--cleanup"],
@@ -69,55 +75,93 @@ class Isolate:
             pass  # Cleanup xatolarini ignore qilamiz
 
     def run(self, cmd: list, stdin_data: str = "") -> dict:
+        """
+        Komandani sandbox ichida bajarish
+        
+        Args:
+            cmd: Bajariladigan komanda
+            stdin_data: STDIN uchun ma'lumotlar
+        
+        Returns:
+            dict: stdout, stderr va meta ma'lumotlar
+        """
         meta = self.box / "meta.txt"
         
-        # Input faylini yozish
-        if stdin_data:
-            (self.box / "input.txt").write_text(stdin_data, encoding="utf-8")
-        else:
-            # Bo'sh input fayl yaratish (stdin kutayotgan dasturlar uchun)
-            (self.box / "input.txt").write_text("", encoding="utf-8")
+        # Input faylini yozish (bo'sh bo'lsa ham)
+        input_file = self.box / "input.txt"
+        input_file.write_text(stdin_data if stdin_data else "", encoding="utf-8")
         
+        # Isolate komandasi
         isolate_cmd = [
             "isolate",
             f"--box-id={self.box_id}",
             "--run",
             
-            # 🔐 XAVFSIZLIK
-            "--processes=1",
-            "--no-network",
+            # 🔐 XAVFSIZLIK SOZLAMALARI
+            "--processes=50",       # Ko'p jarayon uchun (Java, Go)
+            "--no-network",         # Tarmoq yo'q
             
-            # ⏱ LIMITLAR
-            "--time=2",           # CPU time limit
-            "--wall-time=3",      # Real time limit
-            "--mem=262144",       # 256MB
-            "--fsize=10240",      # 10MB file size
-            "--stack=8192",       # 8MB stack
+            # ⏱ RESURS LIMITLARI
+            "--time=2",             # CPU time limit (2 soniya)
+            "--wall-time=5",        # Real time limit (5 soniya)
+            "--mem=524288",         # 512MB xotira
+            "--fsize=51200",        # 50MB fayl hajmi
+            "--stack=262144",       # 256MB stack
             
+            # 📁 I/O
             "--stdin=input.txt",
             "--stdout=out.txt",
             "--stderr=err.txt",
             f"--meta={meta}",
             
+            # Bajarilishi kerak bo'lgan komanda
             "--",
         ] + cmd
         
         try:
-            subprocess.run(
+            result = subprocess.run(
                 isolate_cmd,
                 cwd=self.base,
-                timeout=5,
-                check=False
+                timeout=10,  # Wall time + buffer
+                check=False  # Exitcode'ni o'zimiz tekshiramiz
             )
+            
+            exitcode = result.returncode
+            
         except subprocess.TimeoutExpired:
             return {
                 "stdout": "",
-                "stderr": "Wall Time Limit Exceeded",
-                "meta": "status:TO\n"
+                "stderr": "Wall Time Limit Exceeded (10s)",
+                "meta": "status:TO\n",
+                "exitcode": 1
             }
         
+        # Output fayllarni o'qish
+        stdout = ""
+        stderr = ""
+        meta_content = ""
+        
+        try:
+            if (self.box / "out.txt").exists():
+                stdout = (self.box / "out.txt").read_text(errors="ignore").strip()
+        except:
+            pass
+        
+        try:
+            if (self.box / "err.txt").exists():
+                stderr = (self.box / "err.txt").read_text(errors="ignore").strip()
+        except:
+            pass
+        
+        try:
+            if meta.exists():
+                meta_content = meta.read_text(errors="ignore")
+        except:
+            pass
+        
         return {
-            "stdout": (self.box / "out.txt").read_text(errors="ignore").strip() if (self.box / "out.txt").exists() else "",
-            "stderr": (self.box / "err.txt").read_text(errors="ignore").strip() if (self.box / "err.txt").exists() else "",
-            "meta": meta.read_text(errors="ignore") if meta.exists() else ""
+            "stdout": stdout,
+            "stderr": stderr,
+            "meta": meta_content,
+            "exitcode": exitcode
         }
