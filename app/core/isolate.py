@@ -85,14 +85,13 @@ class Isolate:
         Returns:
             dict: stdout, stderr va meta ma'lumotlar
         """
-        meta = self.box / "meta.txt"
+        # Meta fayl BASE directoriyda, box ichida emas!
+        meta = self.base / "meta.txt"
         
         # Input faylini DOIM yozish
         input_file = self.box / "input.txt"
         try:
             input_file.write_text(stdin_data, encoding="utf-8")
-            # DEBUG
-            print(f"[DEBUG] Input written to {input_file}: {repr(stdin_data[:50])}")
         except Exception as e:
             print(f"[ERROR] Failed to write input: {e}")
         
@@ -110,14 +109,17 @@ class Isolate:
             "--stack=262144",       # 256MB stack
             
             # 📁 I/O
-            f"--stdin={input_file.name}",  # Fayl nomi (box ichida)
             "--stdout=out.txt",
             "--stderr=err.txt",
-            f"--meta={meta}",
-            
-            # Bajarilishi kerak bo'lgan komanda
-            "--",
-        ] + cmd
+            "--meta=meta.txt",      # Base directoriyda
+        ]
+        
+        # STDIN faqat input bor bo'lsagina
+        if stdin_data:
+            isolate_cmd.insert(-3, "--stdin=input.txt")
+        
+        isolate_cmd.append("--")
+        isolate_cmd.extend(cmd) + cmd
         
         try:
             result = subprocess.run(
@@ -151,17 +153,12 @@ class Isolate:
         try:
             if (self.box / "err.txt").exists():
                 stderr = (self.box / "err.txt").read_text(errors="ignore").strip()
-                # DEBUG: stderr log
-                if stderr:
-                    print(f"[DEBUG] Box {self.box_id} stderr:", stderr[:200])
         except:
             pass
         
         try:
             if meta.exists():
                 meta_content = meta.read_text(errors="ignore")
-                # DEBUG: Meta'ni log qilish
-                print(f"[DEBUG] Box {self.box_id} meta:", meta_content[:200])
         except:
             pass
         
