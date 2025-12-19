@@ -97,10 +97,6 @@ class Isolate:
             f"--box-id={self.box_id}",
             "--run",
             
-            # 🔐 XAVFSIZLIK SOZLAMALARI
-            "--processes=50",       # Ko'p jarayon uchun (Java, Go)
-            # "--no-network" parametri eski versiyalarda yo'q
-            
             # ⏱ RESURS LIMITLARI
             "--time=2",             # CPU time limit (2 soniya)
             "--wall-time=5",        # Real time limit (5 soniya)
@@ -156,6 +152,8 @@ class Isolate:
         try:
             if meta.exists():
                 meta_content = meta.read_text(errors="ignore")
+                # DEBUG: Meta'ni log qilish
+                print(f"[DEBUG] Box {self.box_id} meta:", meta_content[:200])
         except:
             pass
         
