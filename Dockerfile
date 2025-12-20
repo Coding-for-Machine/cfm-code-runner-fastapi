@@ -1,7 +1,10 @@
+# Ubuntu 22.04 asosida
 FROM ubuntu:22.04
 
-# Interaktivlikni o'chirish va asosiy paketlarni o'rnatish
+# Interaktiv so'rovlarni o'chirish
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Kerakli paketlarni va dasturlash tillarini o'rnatish
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcap-dev \
@@ -15,26 +18,28 @@ RUN apt-get update && apt-get install -y \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
-
-# Node.js 20.x (LTS) va TypeScript o'rnatish - 2025-yilgi barqaror usul
-RUN mkdir -p /etc/apt/keyrings && \
-    curl -fsSL deb.nodesource.com | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] deb.nodesource.com nodistro main" > /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update && \
+# Node.js va TypeScript o'rnatish
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     npm install -g typescript
 
-# Isolate sandboksini o'rnatish
+# Isolate-ni o'rnatish
 RUN git clone github.com /tmp/isolate && \
     cd /tmp/isolate && \
     make install && \
-    rm -rf /tmp/isolate && \
-    chmod +s /usr/local/bin/isolate
+    rm -rf /tmp/isolate
 
-# Isolate uchun kerakli tizim katalogini yaratish
+# Isolate uchun kerakli papka va ruxsatlar
 RUN mkdir -p /var/local/lib/isolate
 
+# Ishchi katalog
 WORKDIR /app
-COPY . .
 
+# Python skriptingizni konteynerga nusxalash
+COPY test_isolate.py .
+
+# Isolate-ga SUID ruxsatini berish (Sandboks ishlashi uchun shart)
+RUN chmod +s /usr/local/bin/isolate
+
+# Konteynerni ishga tushirish (bash orqali)
 CMD ["bash"]
