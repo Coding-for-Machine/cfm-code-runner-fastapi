@@ -3,9 +3,18 @@ FROM ubuntu:22.04
 # Interaktivlikni o'chirish va asosiy paketlarni o'rnatish
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
-    build-essential libcap-dev pkg-config git python3 python3-pip \
-    golang curl sudo gpg ca-certificates --no-install-recommends && \
-    rm -rf /var/lib/apt/lists/*
+    build-essential \
+    libcap-dev \
+    pkg-config \
+    git \
+    python3 \
+    python3-pip \
+    openjdk-17-jdk \
+    golang \
+    curl \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
 
 # Node.js 20.x (LTS) va TypeScript o'rnatish - 2025-yilgi barqaror usul
 RUN mkdir -p /etc/apt/keyrings && \
