@@ -12,14 +12,16 @@ RUN apt-get update && apt-get install -y \
     git \
     python3 \
     python3-pip \
-    openjdk-17-jdk \
     golang \
     curl \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js va TypeScript o'rnatish
-RUN curl -fsSL deb.nodesource.com | bash - && \
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL deb.nodesource.com | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] deb.nodesource.com nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
+    apt-get update && \
     apt-get install -y nodejs && \
     npm install -g typescript
 
