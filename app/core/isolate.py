@@ -2,9 +2,10 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 import os
+import shutil
 
 # =====================================================
-# TILLAR SOZLAMALARI (Docker yo'llari bilan)
+# TILLAR SOZLAMALARI
 # =====================================================
 LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "python": {
@@ -19,13 +20,13 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
     },
     "typescript": {
         "file": "solution.ts",
-        # TSC ni Node orqali chaqirish xavfsizroq
         "compile": ["/usr/bin/node", "/usr/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
         "run": ["/usr/bin/node", "solution.js"],
     },
     "go": {
         "file": "solution.go",
-        "compile": ["/usr/local/go/bin/go", "build", "-o", "solution", "solution.go"],
+        # Docker ichida Go odatda /usr/bin/go da bo'ladi
+        "compile": ["/usr/bin/go", "build", "-o", "solution", "solution.go"],
         "run": ["./solution"],
         "env": ["GOCACHE=/tmp", "HOME=/tmp"]
     },
@@ -44,71 +45,67 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
 class Isolate:
     def __init__(self, box_id: int):
         self.box_id = box_id
+        # Docker ichida isolate bazasi
         self.base = Path(f"/var/local/lib/isolate/{box_id}")
         self.box = self.base / "box"
 
     def init(self) -> None:
-        # 1. Avval hammasini tozalash (majburiy)
+        # 1. Tozalash
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
-        
-        # 2. Agar papka ichida begona fayllar qolib ketgan bo'lsa, ularni o'chirish
-        if os.path.exists(self.base):
-            import shutil
+        if self.base.exists():
             shutil.rmtree(self.base)
         
-        # 3. Endi init qilish
+        # 2. Init
         result = subprocess.run(
             ["isolate", f"--box-id={self.box_id}", "--init"], 
-            capture_output=True, 
-            text=True
+            capture_output=True, text=True
         )
-        
         if result.returncode != 0:
-            print(f"DEBUG: Isolate init failed. Stderr: {result.stderr}")
             raise RuntimeError(f"Isolate init failed: {result.stderr}")
-
 
     def cleanup(self) -> None:
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
 
     def run(self, cmd: List[str], env_vars: List[str] = []) -> Dict:
-        meta_file = self.box / "meta.txt"
-        stdout_file = self.box / "out.txt"
-        stderr_file = self.box / "err.txt"
-
+        # Fayllar mavjudligini tekshirish
+        meta_file = "meta.txt"
+        
         isolate_cmd = [
             "isolate", f"--box-id={self.box_id}", "--run",
             "--processes=100",
             "--time=30",
             "--mem=1500000",
+            # MUHIM: Kataloglarni ulanishi (Mounting)
             "--dir=/usr/bin",
             "--dir=/usr/lib",
             "--dir=/lib",
             "--dir=/lib64",
-            "--dir=/usr/local/go", # Go uchun
-            "--dir=/usr/libexec",  # C++ linker uchun
-            "--dir=/usr/lib/jvm",  # Java uchun
             "--dir=/etc",
-            "--env=PATH=/usr/bin:/usr/local/bin:/usr/local/go/bin",
+            "--dir=/usr/libexec",
+            "--dir=/usr/include",
+            "--dir=/usr/lib/jvm",
+            "--dir=/box=/box:rw", # /box papkasiga yozish ruxsati
+            "--env=PATH=/usr/bin:/usr/local/bin",
             "--env=HOME=/tmp",
-            "--stdout=out.txt", "--stderr=err.txt", "--meta=meta.txt",
+            "--stdin=/dev/null", # Stdin xatolarini oldini olish uchun
+            f"--meta={meta_file}",
+            "--stdout=out.txt",
+            "--stderr=err.txt",
+            "--",
         ]
+        isolate_cmd.extend(cmd)
         
-        for env in env_vars:
-            isolate_cmd.append(f"--env={env}")
-            
-        isolate_cmd.extend(["--", *cmd])
-        
-        # Konteyner ichida Isolate-ni yurgizish
         result = subprocess.run(isolate_cmd, cwd=self.box, capture_output=True, text=True)
 
-        def read_file(path: Path) -> str:
-            return path.read_text(errors="ignore").strip() if path.exists() else ""
+        def read_box_file(name: str) -> str:
+            p = self.box / name
+            return p.read_text(errors="ignore").strip() if p.exists() else ""
 
         return {
-            "stdout": read_file(stdout_file),
-            "stderr": read_file(stderr_file),
+            "stdout": read_box_file("out.txt"),
+            "stderr": read_box_file("err.txt"),
             "exitcode": result.returncode,
+            "meta": read_box_file("meta.txt")
         }
 
 def test_language(lang: str, code: str):
@@ -116,21 +113,28 @@ def test_language(lang: str, code: str):
     iso = Isolate(box_id=1)
     try:
         iso.init()
+        # Kodni box ichiga yozamiz
         file_path = iso.box / LANGUAGE_CONFIGS[lang]["file"]
         file_path.write_text(code, encoding="utf-8")
 
         config = LANGUAGE_CONFIGS[lang]
+        env = config.get("env", [])
+
+        # Kompilyatsiya
         if config["compile"]:
-            res = iso.run(config["compile"], env_vars=config.get("env", []))
+            res = iso.run(config["compile"], env_vars=env)
             if res["exitcode"] != 0:
-                print(f"FAIL: Compile Error\n{res['stderr']}")
+                print(f"FAIL: Compile Error\nSTDOUT: {res['stdout']}\nSTDERR: {res['stderr']}")
                 return
 
-        res = iso.run(config["run"], env_vars=config.get("env", []))
+        # Ishga tushirish
+        res = iso.run(config["run"], env_vars=env)
         if res["exitcode"] == 0:
             print(f"SUCCESS: {res['stdout']}")
         else:
-            print(f"RUNTIME ERROR: {res['stderr']}")
+            print(f"RUNTIME ERROR:\nSTDOUT: {res['stdout']}\nSTDERR: {res['stderr']}")
+            print(f"META: {res.get('meta')}")
+
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
     finally:
