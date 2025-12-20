@@ -67,4 +67,4 @@ COPY . .
 EXPOSE 8080
 
 # Konteyner ishga tushganda main.py ni ishlatish
-CMD ["python3", "main.py"]
+CMD ["python3", "app/main.py"]
