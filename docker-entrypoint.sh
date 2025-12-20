@@ -75,30 +75,59 @@ isolate --box-id=$TEST_BOX --cleanup 2>/dev/null || true
 rm -rf /var/local/lib/isolate/$TEST_BOX 2>/dev/null || true
 
 # Init
-isolate --box-id=$TEST_BOX --init >/dev/null 2>&1 || { 
-    echo "❌ Isolate init failed!"; 
-    exit 1; 
-}
+echo "  - Initializing box $TEST_BOX..."
+if ! isolate --box-id=$TEST_BOX --init >/dev/null 2>&1; then
+    echo "❌ Isolate init failed!"
+    isolate --box-id=$TEST_BOX --init  # Show error
+    exit 1
+fi
 
 # Write test code
 echo 'print("Isolate works!")' > /var/local/lib/isolate/$TEST_BOX/box/test.py
 
-# Run test
-isolate --box-id=$TEST_BOX --run \
+# Run test with detailed output
+echo "  - Running test code..."
+if ! isolate --box-id=$TEST_BOX --run \
     --time=1 --mem=262144 \
     --stdout=/var/local/lib/isolate/$TEST_BOX/box/out.txt \
     --stderr=/var/local/lib/isolate/$TEST_BOX/box/err.txt \
     --meta=/var/local/lib/isolate/$TEST_BOX/meta.txt \
-    -- /usr/bin/python3 test.py >/dev/null 2>&1 || {
-        echo "❌ Isolate run failed!"
-        exit 1
-    }
+    -- /usr/bin/python3 test.py 2>&1; then
+    
+    echo "❌ Isolate run failed!"
+    echo ""
+    echo "Debug info:"
+    echo "  Box directory exists: $([ -d /var/local/lib/isolate/$TEST_BOX ] && echo 'yes' || echo 'no')"
+    echo "  Test file exists: $([ -f /var/local/lib/isolate/$TEST_BOX/box/test.py ] && echo 'yes' || echo 'no')"
+    echo "  Python path: $(which python3)"
+    echo ""
+    echo "Stderr:"
+    cat /var/local/lib/isolate/$TEST_BOX/box/err.txt 2>/dev/null || echo "(empty)"
+    echo ""
+    echo "Meta:"
+    cat /var/local/lib/isolate/$TEST_BOX/meta.txt 2>/dev/null || echo "(not found)"
+    
+    # Try running without isolate
+    echo ""
+    echo "Testing Python directly:"
+    /usr/bin/python3 /var/local/lib/isolate/$TEST_BOX/box/test.py 2>&1 || echo "Python also failed!"
+    
+    exit 1
+fi
 
 # Check output
-if grep -q "Isolate works!" /var/local/lib/isolate/$TEST_BOX/box/out.txt 2>/dev/null; then
-    echo "  ✓ Isolate test passed"
+if [ -f /var/local/lib/isolate/$TEST_BOX/box/out.txt ]; then
+    OUTPUT=$(cat /var/local/lib/isolate/$TEST_BOX/box/out.txt 2>/dev/null)
+    if echo "$OUTPUT" | grep -q "Isolate works!"; then
+        echo "  ✓ Isolate test passed"
+    else
+        echo "❌ Output mismatch!"
+        echo "  Expected: 'Isolate works!'"
+        echo "  Got: '$OUTPUT'"
+        exit 1
+    fi
 else
-    echo "❌ Isolate test failed!"
+    echo "❌ Output file not created!"
     exit 1
 fi
 
