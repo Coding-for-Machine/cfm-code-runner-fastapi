@@ -82,9 +82,13 @@ RUN git clone https://github.com/ioi/isolate.git \
     && cd .. \
     && rm -rf isolate
 
-# Isolate directories
+# Isolate directories with proper permissions
 RUN mkdir -p /var/local/lib/isolate \
-    && chmod 755 /var/local/lib/isolate
+    && chmod 777 /var/local/lib/isolate
+
+# MUHIM: Isolate config (agar kerak bo'lsa)
+RUN mkdir -p /etc/isolate \
+    && echo "box_root = /var/local/lib/isolate" > /etc/isolate.conf
 
 # =====================================================
 # STAGE 5: FINAL IMAGE
@@ -102,6 +106,9 @@ COPY . .
 
 # Expose port
 EXPOSE 8080
+
+# CRITICAL: Use tmpfs for isolate (fixes "Unexpected mountpoint")
+VOLUME /var/local/lib/isolate
 
 # Entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/

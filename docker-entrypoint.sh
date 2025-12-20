@@ -10,12 +10,19 @@ echo "=================================================="
 # =====================================================
 echo "[1/4] Cleaning up old isolate boxes..."
 
+# Check if isolate directory is on tmpfs
+MOUNT_TYPE=$(df -T /var/local/lib/isolate 2>/dev/null | tail -1 | awk '{print $2}')
+if [ "$MOUNT_TYPE" = "tmpfs" ]; then
+    echo "  ✓ Isolate is on tmpfs (optimal)"
+else
+    echo "  ⚠️  Warning: Isolate is on $MOUNT_TYPE (may cause issues)"
+    echo "  Recommendation: Use --tmpfs /var/local/lib/isolate:exec,mode=777"
+fi
+
 # Barcha eski box'larni tozalash
 for i in {0..999}; do
     if [ -d "/var/local/lib/isolate/$i" ]; then
-        echo "  - Cleaning box $i..."
         isolate --box-id=$i --cleanup 2>/dev/null || true
-        rm -rf /var/local/lib/isolate/$i/* 2>/dev/null || true
         rm -rf /var/local/lib/isolate/$i 2>/dev/null || true
     fi
 done
@@ -70,9 +77,13 @@ echo "[4/4] Testing isolate..."
 
 TEST_BOX=999
 
-# Cleanup test box
+# MUHIM: Cleanup va to'liq tozalash
+echo "  - Cleaning test box..."
 isolate --box-id=$TEST_BOX --cleanup 2>/dev/null || true
 rm -rf /var/local/lib/isolate/$TEST_BOX 2>/dev/null || true
+
+# Biroz kutish (filesystem sync uchun)
+sleep 0.5
 
 # Init
 echo "  - Initializing box $TEST_BOX..."
@@ -82,8 +93,23 @@ if ! isolate --box-id=$TEST_BOX --init >/dev/null 2>&1; then
     exit 1
 fi
 
-# Write test code
+# Verify box is clean
+if [ "$(ls -A /var/local/lib/isolate/$TEST_BOX/box/ 2>/dev/null)" ]; then
+    echo "⚠️  Warning: Box is not empty after init!"
+    echo "  Contents: $(ls -la /var/local/lib/isolate/$TEST_BOX/box/)"
+    # Clean it manually
+    rm -rf /var/local/lib/isolate/$TEST_BOX/box/* 2>/dev/null || true
+fi
+
+# NOW write test code
+echo "  - Writing test code..."
 echo 'print("Isolate works!")' > /var/local/lib/isolate/$TEST_BOX/box/test.py
+
+# Verify test file was created
+if [ ! -f /var/local/lib/isolate/$TEST_BOX/box/test.py ]; then
+    echo "❌ Failed to create test file!"
+    exit 1
+fi
 
 # Run test with detailed output
 echo "  - Running test code..."
