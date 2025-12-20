@@ -114,6 +114,7 @@ fi
 # Run test with detailed output
 echo "  - Running test code..."
 if ! isolate --box-id=$TEST_BOX --run \
+    --share-net \
     --time=1 --mem=262144 \
     --stdout=/var/local/lib/isolate/$TEST_BOX/box/out.txt \
     --stderr=/var/local/lib/isolate/$TEST_BOX/box/err.txt \

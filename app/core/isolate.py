@@ -202,6 +202,9 @@ class Isolate:
             f"--box-id={self.box_id}",
             "--run",
             
+            # Network (Docker uchun MUHIM!)
+            "--share-net",  # Host network'ini share qilish
+            
             # Limits
             "--time=2",
             "--wall-time=5",
