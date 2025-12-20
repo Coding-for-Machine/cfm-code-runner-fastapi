@@ -36,7 +36,7 @@ RUN mkdir -p /var/local/lib/isolate
 WORKDIR /app
 
 # Python skriptingizni konteynerga nusxalash
-COPY test_isolate.py .
+COPY . .
 
 # Isolate-ga SUID ruxsatini berish (Sandboks ishlashi uchun shart)
 RUN chmod +s /usr/local/bin/isolate
