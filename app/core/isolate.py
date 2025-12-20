@@ -183,6 +183,7 @@ class Isolate:
             "--processes=100",
             "--time=10",
             "--mem=1024000",
+            # Standart kataloglar
             "--dir=/usr/bin",
             "--dir=/usr/lib",
             "--dir=/lib",
@@ -190,8 +191,9 @@ class Isolate:
             "--dir=/etc",
             "--dir=/usr/libexec",
             "--dir=/usr/include",
-            # Docker ichida box papkasiga ruxsat berish
-            f"--dir=/box={self.box_path}:rw", 
+            # DOCKER UCHUN MAXSUS: Box va Tmp kataloglarini ulab berish
+            f"--dir=/box={self.box_path}:rw",
+            "--dir=/tmp=/tmp:rw", 
             "--env=PATH=/usr/bin:/bin",
             "--env=HOME=/tmp",
             "--meta=meta.txt",
