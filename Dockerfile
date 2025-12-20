@@ -1,70 +1,63 @@
-# Dockerfile
+# ==============================
+# Base image
+# ==============================
 FROM ubuntu:22.04
 
-# Asosiy o'zgaruvchilar
+# ==============================
+# Environment vars
+# ==============================
 ENV DEBIAN_FRONTEND=noninteractive
-ENV GOLANG_VERSION=1.21.5
-ENV PYTHON_VERSION=3.11
+ENV TZ=Etc/UTC
 
-# Tizimni yangilash va asosiy paketlarni o'rnatish
-RUN apt-get update && apt-get install -y \
+# ==============================
+# Install dependencies
+# ==============================
+RUN apt update && apt install -y \
+    python3 python3-pip \
+    g++ gcc \
+    openjdk-17-jdk \
+    golang-go \
+    sudo wget vim curl gnupg2 unzip \
     build-essential \
-    gcc \
-    g++ \
-    make \
-    pkg-config \
-    libcap-dev \
-    libsystemd-dev \
-    git \
-    curl \
-    wget \
-    ca-certificates \
+    && apt clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Python o'rnatish
-RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3.11-dev \
-    python3-pip \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
+# ==============================
+# NodeJS & TypeScript
+# ==============================
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt install -y nodejs \
+    && npm install -g typescript \
+    && npm install -g npm
 
-# Go o'rnatish
-RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz \
-    && rm go${GOLANG_VERSION}.linux-amd64.tar.gz
+# ==============================
+# Install Isolate
+# ==============================
+RUN wget http://archive.ubuntu.com/ubuntu/pool/universe/i/isolate/isolate_2.2.1-2_amd64.deb \
+    && dpkg -i isolate_2.2.1-2_amd64.deb || apt-get install -f -y \
+    && rm isolate_2.2.1-2_amd64.deb
 
-ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOPATH="/go"
-ENV PATH="${GOPATH}/bin:${PATH}"
-
-# C++ kompilyatori uchun kerakli kutubxonalar
-RUN apt-get update && apt-get install -y \
-    libstdc++-11-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Isolate o'rnatish
-WORKDIR /tmp
-RUN git clone https://github.com/ioi/isolate.git \
-    && cd isolate \
-    && make isolate \
-    && make install \
-    && cd .. \
-    && rm -rf isolate
-
-# Isolate uchun kerakli kataloglarni yaratish
-RUN mkdir -p /var/local/lib/isolate \
-    && chmod 755 /var/local/lib/isolate
-
+# ==============================
+# Setup working directory
+# ==============================
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip3 install -r requirements.txt
+# ==============================
+# Copy project files
+# ==============================
+COPY . /app
 
-COPY . .
+# ==============================
+# Install Python requirements
+# ==============================
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-EXPOSE 8080
+# ==============================
+# Expose port (agar Flask ishlatilsa)
+# ==============================
+EXPOSE 5000
 
-# Konteyner ishga tushganda main.py ni ishlatish
-CMD ["python3", "main.py"]
+# ==============================
+# Default command
+# ==============================
+CMD ["python3", "app.py"]
