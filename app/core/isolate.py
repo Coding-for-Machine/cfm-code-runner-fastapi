@@ -155,13 +155,12 @@ import shutil
 class Isolate:
     def __init__(self, box_id: int):
         self.box_id = box_id
-        # Bazaviy katalog: /var/local/lib/isolate/1
+        # Docker ichidagi bazaviy katalog
         self.base_path = Path(f"/var/local/lib/isolate/{box_id}")
-        # Ishchi katalog: /var/local/lib/isolate/1/box
         self.box_path = self.base_path / "box"
 
     def init(self) -> None:
-        # 1. Tozalash (Oldingi qoldiqlarni butkul o'chirish)
+        # 1. Tozalash
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
         if self.base_path.exists():
             shutil.rmtree(self.base_path)
@@ -174,56 +173,54 @@ class Isolate:
         if result.returncode != 0:
             raise RuntimeError(f"Isolate init failed: {result.stderr}")
 
-        def run(self, cmd: List[str], env_vars: List[str] = []) -> Dict:
-        # Isolate buyrug'i
-            isolate_cmd = [
-                "isolate", f"--box-id={self.box_id}", "--run",
-                "--processes=100",
-                "--time=10",
-                "--mem=1024000",
-                # MUHIM: Docker ichida majburiy ulanishlar
-                "--dir=/usr/bin",
-                "--dir=/usr/lib",
-                "--dir=/lib",
-                "--dir=/lib64",
-                "--dir=/etc",
-                "--dir=/usr/libexec",
-                "--dir=/usr/include",
-                # MUHIM: Box papkasiga yozish ruxsatini berish (Docker uchun maxsus)
-                f"--dir=/box={self.box_path}:rw", 
-                "--env=PATH=/usr/bin:/bin",
-                "--env=HOME=/tmp",
-                "--meta=meta.txt",
-                "--stdout=out.txt",
-                "--stderr=err.txt",
-                "--",
-            ]
-            isolate_cmd.extend(cmd)
-            
-            # Meta va Stdout fayllarini tozalab olamiz (eski ma'lumotlar xalaqit bermasligi uchun)
-            for f in ["out.txt", "err.txt", "meta.txt"]:
-                if (self.box_path / f).exists():
-                    (self.box_path / f).unlink()
+    def cleanup(self) -> None:
+        subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
 
-            # Buyruqni bajarish
-            result = subprocess.run(isolate_cmd, cwd=self.box_path, capture_output=True, text=True)
+    def run(self, cmd: List[str], env_vars: List[str] = []) -> Dict:
+        # Isolate buyrug'i (Docker uchun optimallashgan)
+        isolate_cmd = [
+            "isolate", f"--box-id={self.box_id}", "--run",
+            "--processes=100",
+            "--time=10",
+            "--mem=1024000",
+            "--dir=/usr/bin",
+            "--dir=/usr/lib",
+            "--dir=/lib",
+            "--dir=/lib64",
+            "--dir=/etc",
+            "--dir=/usr/libexec",
+            "--dir=/usr/include",
+            # Docker ichida box papkasiga ruxsat berish
+            f"--dir=/box={self.box_path}:rw", 
+            "--env=PATH=/usr/bin:/bin",
+            "--env=HOME=/tmp",
+            "--meta=meta.txt",
+            "--stdout=out.txt",
+            "--stderr=err.txt",
+            "--",
+        ]
+        isolate_cmd.extend(cmd)
+        
+        # Fayllarni tozalash
+        for f in ["out.txt", "err.txt", "meta.txt"]:
+            if (self.box_path / f).exists(): (self.box_path / f).unlink()
 
-            def read_box_file(name: str) -> str:
-                p = self.box_path / name
-                if p.exists():
-                    return p.read_text(errors="ignore").strip()
-                return ""
+        # Buyruqni bajarish
+        result = subprocess.run(isolate_cmd, cwd=self.box_path, capture_output=True, text=True)
 
-            return {
-                "stdout": read_box_file("out.txt"),
-                "stderr": read_box_file("err.txt"),
-                "exitcode": result.returncode,
-                "meta": read_box_file("meta.txt")
-            }
+        def read_box_file(name: str) -> str:
+            p = self.box_path / name
+            return p.read_text(errors="ignore").strip() if p.exists() else ""
 
+        return {
+            "stdout": read_box_file("out.txt"),
+            "stderr": read_box_file("err.txt"),
+            "exitcode": result.returncode,
+            "meta": read_box_file("meta.txt")
+        }
 
 # =====================================================
-# TILLARNI TEST QILISH
+# TILLARNI TEST QILISH FUNKSIYASI
 # =====================================================
 def test_language(lang: str, filename: str, code: str, run_cmd: List[str], compile_cmd: List[str] = None):
     print(f"\n[+] Testing {lang.upper()}...")
@@ -232,8 +229,7 @@ def test_language(lang: str, filename: str, code: str, run_cmd: List[str], compi
     try:
         iso.init()
         
-        # ENG MUHIM QISMI: Faylni to'g'ri joyga yozish
-        # Fayl faqat /var/local/lib/isolate/1/box/ ichida bo'lishi shart!
+        # Faylni faqat /box ichiga yozamiz
         target_file = iso.box_path / filename
         target_file.write_text(code, encoding="utf-8")
         
@@ -241,7 +237,7 @@ def test_language(lang: str, filename: str, code: str, run_cmd: List[str], compi
         if compile_cmd:
             res = iso.run(compile_cmd)
             if res["exitcode"] != 0:
-                print(f"FAIL: Compile Error\n{res['stderr']}")
+                print(f"FAIL: Compile Error\nSTDOUT: {res['stdout']}\nSTDERR: {res['stderr']}")
                 return
 
         # Ishga tushirish
@@ -254,11 +250,16 @@ def test_language(lang: str, filename: str, code: str, run_cmd: List[str], compi
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
     finally:
-        subprocess.run(["isolate", "--box-id=1", "--cleanup"], capture_output=True)
+        iso.cleanup()
 
+# =====================================================
+# ASOSIY QISM
+# =====================================================
 if __name__ == "__main__":
     # Python
-    test_language("python", "solution.py", "print('Python OK')", ["/usr/bin/python3", "solution.py"])
+    test_language("python", "solution.py", 
+                  "print('Python OK')", 
+                  ["/usr/bin/python3", "solution.py"])
     
     # C++
     test_language("cpp", "solution.cpp", 
@@ -266,6 +267,8 @@ if __name__ == "__main__":
                   ["./solution"], ["/usr/bin/g++", "solution.cpp", "-o", "solution"])
     
     # TypeScript
-    test_language("typescript", "solution.ts", "console.log('TS OK')", 
+    test_language("typescript", "solution.ts", 
+                  "console.log('TS OK')", 
                   ["/usr/bin/node", "solution.js"], 
                   ["/usr/bin/node", "/usr/bin/tsc", "solution.ts", "--target", "ES2020"])
+
