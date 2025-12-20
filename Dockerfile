@@ -1,13 +1,22 @@
-# Dockerfile
-FROM ubuntu:22.04
+# =====================================================
+# STAGE 1: BASE IMAGE
+# =====================================================
+FROM ubuntu:22.04 AS base
 
-# Asosiy o'zgaruvchilar
 ENV DEBIAN_FRONTEND=noninteractive
-ENV GOLANG_VERSION=1.21.5
-ENV PYTHON_VERSION=3.11
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
-# Tizimni yangilash va asosiy paketlarni o'rnatish
-RUN apt-get update && apt-get install -y \
+# Tizimni yangilash
+RUN apt-get update && apt-get upgrade -y
+
+# =====================================================
+# STAGE 2: BUILD TOOLS
+# =====================================================
+FROM base AS builder
+
+# Build tools
+RUN apt-get install -y \
     build-essential \
     gcc \
     g++ \
@@ -21,30 +30,50 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Python o'rnatish
+# =====================================================
+# STAGE 3: LANGUAGE RUNTIMES
+# =====================================================
+FROM builder AS runtime
+
+# Python 3.11
 RUN apt-get update && apt-get install -y \
     python3.11 \
     python3.11-dev \
     python3-pip \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
-    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
-# Go o'rnatish
-RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz \
+# Go 1.21.5
+ENV GOLANG_VERSION=1.21.5
+RUN wget -q https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz \
     && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz \
     && rm go${GOLANG_VERSION}.linux-amd64.tar.gz
 
 ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOPATH="/go"
-ENV PATH="${GOPATH}/bin:${PATH}"
 
-# C++ kompilyatori uchun kerakli kutubxonalar
+# Java
+RUN apt-get update && apt-get install -y \
+    default-jdk \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# TypeScript
+RUN npm install -g typescript
+
+# C/C++ libraries
 RUN apt-get update && apt-get install -y \
     libstdc++-11-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Isolate o'rnatish
+# =====================================================
+# STAGE 4: ISOLATE INSTALLATION
+# =====================================================
+FROM runtime AS isolate-builder
+
 WORKDIR /tmp
 RUN git clone https://github.com/ioi/isolate.git \
     && cd isolate \
@@ -53,18 +82,34 @@ RUN git clone https://github.com/ioi/isolate.git \
     && cd .. \
     && rm -rf isolate
 
-# Isolate uchun kerakli kataloglarni yaratish
+# Isolate directories
 RUN mkdir -p /var/local/lib/isolate \
     && chmod 755 /var/local/lib/isolate
 
+# =====================================================
+# STAGE 5: FINAL IMAGE
+# =====================================================
+FROM isolate-builder AS final
+
 WORKDIR /app
 
+# Python dependencies
 COPY requirements.txt .
-RUN pip3 install -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Application code
 COPY . .
 
+# Expose port
 EXPOSE 8080
 
-# Konteyner ishga tushganda main.py ni ishlatish
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["python3", "app/main.py"]
