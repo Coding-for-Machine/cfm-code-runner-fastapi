@@ -116,9 +116,9 @@ echo "  - Running test code..."
 if ! isolate --box-id=$TEST_BOX --run \
     --share-net \
     --time=1 --mem=262144 \
-    --stdout=/var/local/lib/isolate/$TEST_BOX/box/out.txt \
-    --stderr=/var/local/lib/isolate/$TEST_BOX/box/err.txt \
-    --meta=/var/local/lib/isolate/$TEST_BOX/meta.txt \
+    --stdout=out.txt \
+    --stderr=err.txt \
+    --meta=meta.txt \
     -- /usr/bin/python3 test.py 2>&1; then
     
     echo "❌ Isolate run failed!"
