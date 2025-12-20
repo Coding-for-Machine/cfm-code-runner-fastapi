@@ -48,10 +48,25 @@ class Isolate:
         self.box = self.base / "box"
 
     def init(self) -> None:
-        # Eski holatni tozalash va yangisini yaratish
+        # 1. Avval hammasini tozalash (majburiy)
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
-        # --cg flagisiz ishlatamiz, chunki Docker ichida cgroup muammoli bo'lishi mumkin
-        subprocess.run(["isolate", f"--box-id={self.box_id}", "--init"], check=True, capture_output=True)
+        
+        # 2. Agar papka ichida begona fayllar qolib ketgan bo'lsa, ularni o'chirish
+        if os.path.exists(self.base):
+            import shutil
+            shutil.rmtree(self.base)
+        
+        # 3. Endi init qilish
+        result = subprocess.run(
+            ["isolate", f"--box-id={self.box_id}", "--init"], 
+            capture_output=True, 
+            text=True
+        )
+        
+        if result.returncode != 0:
+            print(f"DEBUG: Isolate init failed. Stderr: {result.stderr}")
+            raise RuntimeError(f"Isolate init failed: {result.stderr}")
+
 
     def cleanup(self) -> None:
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
