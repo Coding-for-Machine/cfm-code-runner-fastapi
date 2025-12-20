@@ -1,45 +1,70 @@
-# Ubuntu 22.04 asosida
+# Dockerfile
 FROM ubuntu:22.04
 
-# Interaktiv so'rovlarni o'chirish
+# Asosiy o'zgaruvchilar
 ENV DEBIAN_FRONTEND=noninteractive
+ENV GOLANG_VERSION=1.21.5
+ENV PYTHON_VERSION=3.11
 
-# Kerakli paketlarni va dasturlash tillarini o'rnatish
+# Tizimni yangilash va asosiy paketlarni o'rnatish
 RUN apt-get update && apt-get install -y \
     build-essential \
-    libcap-dev \
+    gcc \
+    g++ \
+    make \
     pkg-config \
+    libcap-dev \
+    libsystemd-dev \
     git \
-    python3 \
-    python3-pip \
-    openjdk-17-jdk \
-    golang \
     curl \
-    sudo \
+    wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js va TypeScript o'rnatish
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    npm install -g typescript
+# Python o'rnatish
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
 
-# Isolate-ni o'rnatish
-RUN git clone github.com /tmp/isolate && \
-    cd /tmp/isolate && \
-    make install && \
-    rm -rf /tmp/isolate
+# Go o'rnatish
+RUN wget https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz \
+    && rm go${GOLANG_VERSION}.linux-amd64.tar.gz
 
-# Isolate uchun kerakli papka va ruxsatlar
-RUN mkdir -p /var/local/lib/isolate
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/go"
+ENV PATH="${GOPATH}/bin:${PATH}"
 
-# Ishchi katalog
+# C++ kompilyatori uchun kerakli kutubxonalar
+RUN apt-get update && apt-get install -y \
+    libstdc++-11-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Isolate o'rnatish
+WORKDIR /tmp
+RUN git clone https://github.com/ioi/isolate.git \
+    && cd isolate \
+    && make isolate \
+    && make install \
+    && cd .. \
+    && rm -rf isolate
+
+# Isolate uchun kerakli kataloglarni yaratish
+RUN mkdir -p /var/local/lib/isolate \
+    && chmod 755 /var/local/lib/isolate
+
 WORKDIR /app
 
-# Python skriptingizni konteynerga nusxalash
-COPY test_isolate.py .
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
 
-# Isolate-ga SUID ruxsatini berish (Sandboks ishlashi uchun shart)
-RUN chmod +s /usr/local/bin/isolate
+COPY . .
 
-# Konteynerni ishga tushirish (bash orqali)
+EXPOSE 8080
+
+# Konteyner ishga tushganda main.py ni ishlatish
 CMD ["bash"]
