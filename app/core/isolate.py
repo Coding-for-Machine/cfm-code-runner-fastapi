@@ -1,30 +1,31 @@
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
+import os
 
 # =====================================================
-# LANGUAGE CONFIGURATIONS
+# TILLAR SOZLAMALARI (Docker yo'llari bilan)
 # =====================================================
 LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "python": {
         "file": "solution.py",
         "compile": None,
-        "run": ["/usr/local/bin/python3", "solution.py"],
+        "run": ["/usr/bin/python3", "solution.py"],
     },
     "javascript": {
         "file": "solution.js",
         "compile": None,
-        "run": ["/opt/nodejs/bin/node", "solution.js"],
+        "run": ["/usr/bin/node", "solution.js"],
     },
     "typescript": {
         "file": "solution.ts",
-        # TSC ni to'g'ridan-to'g'ri emas, NODE orqali chaqiramiz (Symbolic link xatosini yopadi)
-        "compile": ["/opt/nodejs/bin/node", "/opt/nodejs/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
-        "run": ["/opt/nodejs/bin/node", "solution.js"],
+        # TSC ni Node orqali chaqirish xavfsizroq
+        "compile": ["/usr/bin/node", "/usr/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
+        "run": ["/usr/bin/node", "solution.js"],
     },
     "go": {
         "file": "solution.go",
-        "compile": ["/usr/bin/go", "build", "-o", "solution", "solution.go"],
+        "compile": ["/usr/local/go/bin/go", "build", "-o", "solution", "solution.go"],
         "run": ["./solution"],
         "env": ["GOCACHE=/tmp", "HOME=/tmp"]
     },
@@ -40,9 +41,6 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
     },
 }
 
-# =====================================================
-# ISOLATE SANDBOX
-# =====================================================
 class Isolate:
     def __init__(self, box_id: int):
         self.box_id = box_id
@@ -50,7 +48,9 @@ class Isolate:
         self.box = self.base / "box"
 
     def init(self) -> None:
+        # Eski holatni tozalash va yangisini yaratish
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
+        # --cg flagisiz ishlatamiz, chunki Docker ichida cgroup muammoli bo'lishi mumkin
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--init"], check=True, capture_output=True)
 
     def cleanup(self) -> None:
@@ -62,27 +62,21 @@ class Isolate:
         stderr_file = self.box / "err.txt"
 
         isolate_cmd = [
-            "isolate",
-            f"--box-id={self.box_id}",
-            "--run",
+            "isolate", f"--box-id={self.box_id}", "--run",
             "--processes=100",
             "--time=30",
-            "--mem=2048000",       # Xotira 2GB ga oshirildi (Java uchun)
+            "--mem=1500000",
             "--dir=/usr/bin",
             "--dir=/usr/lib",
             "--dir=/lib",
             "--dir=/lib64",
-            "--dir=/usr/local/bin",
-            "--dir=/opt/nodejs",
-            "--dir=/usr/libexec",
-            "--dir=/usr/include",
-            "--dir=/usr/lib/jvm",   # Java uchun
+            "--dir=/usr/local/go", # Go uchun
+            "--dir=/usr/libexec",  # C++ linker uchun
+            "--dir=/usr/lib/jvm",  # Java uchun
             "--dir=/etc",
-            "--env=PATH=/usr/bin:/usr/local/bin:/opt/nodejs/bin",
+            "--env=PATH=/usr/bin:/usr/local/bin:/usr/local/go/bin",
             "--env=HOME=/tmp",
-            "--stdout=out.txt",
-            "--stderr=err.txt",
-            "--meta=meta.txt",
+            "--stdout=out.txt", "--stderr=err.txt", "--meta=meta.txt",
         ]
         
         for env in env_vars:
@@ -90,7 +84,7 @@ class Isolate:
             
         isolate_cmd.extend(["--", *cmd])
         
-        # Capture_output=True qilib barcha xatoni ko'ramiz
+        # Konteyner ichida Isolate-ni yurgizish
         result = subprocess.run(isolate_cmd, cwd=self.box, capture_output=True, text=True)
 
         def read_file(path: Path) -> str:
@@ -102,64 +96,33 @@ class Isolate:
             "exitcode": result.returncode,
         }
 
-# =========================
-# TEST FUNKSIYASI
-# =========================
 def test_language(lang: str, code: str):
     print(f"\n[+] Testing {lang.upper()}...")
     iso = Isolate(box_id=1)
-    iso.init()
-    
-    file_path = iso.box / LANGUAGE_CONFIGS[lang]["file"]
-    file_path.write_text(code, encoding="utf-8")
+    try:
+        iso.init()
+        file_path = iso.box / LANGUAGE_CONFIGS[lang]["file"]
+        file_path.write_text(code, encoding="utf-8")
 
-    config = LANGUAGE_CONFIGS[lang]
-    extra_env = config.get("env", [])
+        config = LANGUAGE_CONFIGS[lang]
+        if config["compile"]:
+            res = iso.run(config["compile"], env_vars=config.get("env", []))
+            if res["exitcode"] != 0:
+                print(f"FAIL: Compile Error\n{res['stderr']}")
+                return
 
-    # Kompilyatsiya
-    if config["compile"]:
-        res = iso.run(config["compile"], env_vars=extra_env)
-        if res["exitcode"] != 0:
-            print(f"FAIL: Compile Error\nSTDERR: {res['stderr']}")
-            return
+        res = iso.run(config["run"], env_vars=config.get("env", []))
+        if res["exitcode"] == 0:
+            print(f"SUCCESS: {res['stdout']}")
+        else:
+            print(f"RUNTIME ERROR: {res['stderr']}")
+    except Exception as e:
+        print(f"CRITICAL ERROR: {e}")
+    finally:
+        iso.cleanup()
 
-    # Ishga tushirish
-    res = iso.run(config["run"], env_vars=extra_env)
-    if res["exitcode"] == 0:
-        print(f"RESULT: {res['stdout']}")
-    else:
-        print(f"RUNTIME ERROR: {res['stderr']}")
-    
-    iso.cleanup()
-
-# =========================
-# TESTLAR
-# =========================
 if __name__ == "__main__":
-    # TypeScript
-    test_language("typescript", "const a: number = 10; const b: number = 20; console.log(`TS Result: ${a + b}`);")
-    
-    # Java
-    test_language("java", "public class Solution { public static void main(String[] args) { System.out.println(\"Java is Working!\"); } }")
-    
-    # Python (tekshiruv)
-    test_language("python", "print('Python is Working!')")
-
-    # Java testi
-    test_language("java", "public class Solution { public static void main(String[] args) { System.out.println(\"Java OK!\"); } }")
-    
-    # TypeScript testi
-    test_language("typescript", "const msg: string = 'TypeScript OK!'; console.log(msg);")
-    
-    # Python testi (tekshiruv uchun)
-    test_language("python", "print('Python OK!')")
-
-    test_language("cpp", "#include <iostream>\nint main() { std::cout << \"Hello from C++\"; return 0; }")
-    
-    test_language("python", "print('Hello from Python')")
-    
-    test_language("javascript", "console.log('Hello from Node.js');")
-    
-    test_language("go", "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Hello from Go\") }")
-    
-    test_language("java", "public class Solution { public static void main(String[] args) { System.out.println(\"Hello from Java\"); } }")
+    test_language("python", "print('Python OK')")
+    test_language("typescript", "const t: string = 'TS OK'; console.log(t);")
+    test_language("java", "public class Solution { public static void main(String[] args) { System.out.println(\"Java OK\"); } }")
+    test_language("go", "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Go OK\") }")
