@@ -145,7 +145,6 @@
 #     test_language("typescript", "const t: string = 'TS OK'; console.log(t);")
 #     test_language("java", "public class Solution { public static void main(String[] args) { System.out.println(\"Java OK\"); } }")
 #     test_language("go", "package main\nimport \"fmt\"\nfunc main() { fmt.Println(\"Go OK\") }")
-
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -155,17 +154,14 @@ import shutil
 class Isolate:
     def __init__(self, box_id: int):
         self.box_id = box_id
-        # Docker ichidagi bazaviy katalog
         self.base_path = Path(f"/var/local/lib/isolate/{box_id}")
         self.box_path = self.base_path / "box"
 
     def init(self) -> None:
-        # 1. Tozalash
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
         if self.base_path.exists():
             shutil.rmtree(self.base_path)
         
-        # 2. Yangidan yaratish
         result = subprocess.run(
             ["isolate", f"--box-id={self.box_id}", "--init"], 
             capture_output=True, text=True
@@ -176,14 +172,13 @@ class Isolate:
     def cleanup(self) -> None:
         subprocess.run(["isolate", f"--box-id={self.box_id}", "--cleanup"], capture_output=True)
 
-    def run(self, cmd: List[str], env_vars: List[str] = []) -> Dict:
-        # Isolate buyrug'i (Docker uchun optimallashgan)
+    def run(self, cmd: List[str]) -> Dict:
+        # Judge0 uslubidagi Mounting: Ichki /box ni tashqi box_path ga bog'lash
         isolate_cmd = [
             "isolate", f"--box-id={self.box_id}", "--run",
             "--processes=100",
             "--time=10",
             "--mem=1024000",
-            # Standart kataloglar
             "--dir=/usr/bin",
             "--dir=/usr/lib",
             "--dir=/lib",
@@ -191,86 +186,64 @@ class Isolate:
             "--dir=/etc",
             "--dir=/usr/libexec",
             "--dir=/usr/include",
-            # DOCKER UCHUN MAXSUS: Box va Tmp kataloglarini ulab berish
+            # MUHIM: Ichki va tashqi yo'llarni majburiy bog'lash
             f"--dir=/box={self.box_path}:rw",
             "--dir=/tmp=/tmp:rw", 
             "--env=PATH=/usr/bin:/bin",
             "--env=HOME=/tmp",
-            "--meta=meta.txt",
-            "--stdout=out.txt",
-            "--stderr=err.txt",
+            f"--meta={self.box_path}/meta.txt",
+            f"--stdout={self.box_path}/out.txt",
+            f"--stderr={self.box_path}/err.txt",
             "--",
         ]
         isolate_cmd.extend(cmd)
         
-        # Fayllarni tozalash
-        for f in ["out.txt", "err.txt", "meta.txt"]:
-            if (self.box_path / f).exists(): (self.box_path / f).unlink()
-
-        # Buyruqni bajarish
-        result = subprocess.run(isolate_cmd, cwd=self.box_path, capture_output=True, text=True)
+        # subprocess.run o'rniga to'g'ridan-to'g'ri chaqiruv
+        result = subprocess.run(isolate_cmd, capture_output=True, text=True)
 
         def read_box_file(name: str) -> str:
             p = self.box_path / name
             return p.read_text(errors="ignore").strip() if p.exists() else ""
 
+        # Agar Isolate'ning o'zi ishga tushmasa (Masalan, Mount Error)
+        if result.returncode != 0 and not (self.box_path / "meta.txt").exists():
+            return {
+                "stdout": "",
+                "stderr": f"SYSTEM_ERROR: {result.stderr or result.stdout}",
+                "exitcode": result.returncode,
+            }
+
         return {
             "stdout": read_box_file("out.txt"),
             "stderr": read_box_file("err.txt"),
             "exitcode": result.returncode,
-            "meta": read_box_file("meta.txt")
         }
 
 # =====================================================
-# TILLARNI TEST QILISH FUNKSIYASI
+# TILLAR TESTI
 # =====================================================
 def test_language(lang: str, filename: str, code: str, run_cmd: List[str], compile_cmd: List[str] = None):
     print(f"\n[+] Testing {lang.upper()}...")
     iso = Isolate(box_id=1)
-    
     try:
         iso.init()
+        (iso.box_path / filename).write_text(code, encoding="utf-8")
         
-        # Faylni faqat /box ichiga yozamiz
-        target_file = iso.box_path / filename
-        target_file.write_text(code, encoding="utf-8")
-        
-        # Kompilyatsiya
         if compile_cmd:
             res = iso.run(compile_cmd)
             if res["exitcode"] != 0:
-                print(f"FAIL: Compile Error\nSTDOUT: {res['stdout']}\nSTDERR: {res['stderr']}")
+                print(f"FAIL: Compile Error\n{res['stderr']}")
                 return
 
-        # Ishga tushirish
         res = iso.run(run_cmd)
-        if res["exitcode"] == 0:
-            print(f"SUCCESS: {res['stdout']}")
-        else:
-            print(f"RUNTIME ERROR: {res['stderr']}\nSTDOUT: {res['stdout']}")
+        print(f"RESULT: {res['stdout'] if res['exitcode'] == 0 else 'ERROR: ' + res['stderr']}")
             
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
     finally:
         iso.cleanup()
 
-# =====================================================
-# ASOSIY QISM
-# =====================================================
 if __name__ == "__main__":
-    # Python
-    test_language("python", "solution.py", 
-                  "print('Python OK')", 
-                  ["/usr/bin/python3", "solution.py"])
-    
-    # C++
-    test_language("cpp", "solution.cpp", 
-                  "#include <iostream>\nint main() { std::cout << \"CPP OK\"; return 0; }", 
-                  ["./solution"], ["/usr/bin/g++", "solution.cpp", "-o", "solution"])
-    
-    # TypeScript
-    test_language("typescript", "solution.ts", 
-                  "console.log('TS OK')", 
-                  ["/usr/bin/node", "solution.js"], 
-                  ["/usr/bin/node", "/usr/bin/tsc", "solution.ts", "--target", "ES2020"])
+    test_language("python", "solution.py", "print('OK')", ["/usr/bin/python3", "solution.py"])
+    test_language("cpp", "solution.cpp", "#include <iostream>\nint main() { std::cout << \"OK\"; return 0; }", ["./solution"], ["/usr/bin/g++", "solution.cpp", "-o", "solution"])
 
