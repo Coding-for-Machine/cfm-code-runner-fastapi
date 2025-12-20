@@ -174,42 +174,53 @@ class Isolate:
         if result.returncode != 0:
             raise RuntimeError(f"Isolate init failed: {result.stderr}")
 
-    def run(self, cmd: List[str], env_vars: List[str] = []) -> Dict:
+        def run(self, cmd: List[str], env_vars: List[str] = []) -> Dict:
         # Isolate buyrug'i
-        isolate_cmd = [
-            "isolate", f"--box-id={self.box_id}", "--run",
-            "--processes=100",
-            "--time=10",
-            "--mem=1024000",
-            "--dir=/usr/bin",
-            "--dir=/usr/lib",
-            "--dir=/lib",
-            "--dir=/lib64",
-            "--dir=/etc",
-            "--dir=/usr/libexec",
-            "--dir=/usr/lib/jvm",
-            "--env=PATH=/usr/bin:/local/bin",
-            "--env=HOME=/tmp",
-            "--meta=meta.txt",
-            "--stdout=out.txt",
-            "--stderr=err.txt",
-            "--",
-        ]
-        isolate_cmd.extend(cmd)
-        
-        # Diqqat: cwd=self.box_path (fayllar /box ichida qidiriladi)
-        result = subprocess.run(isolate_cmd, cwd=self.box_path, capture_output=True, text=True)
+            isolate_cmd = [
+                "isolate", f"--box-id={self.box_id}", "--run",
+                "--processes=100",
+                "--time=10",
+                "--mem=1024000",
+                # MUHIM: Docker ichida majburiy ulanishlar
+                "--dir=/usr/bin",
+                "--dir=/usr/lib",
+                "--dir=/lib",
+                "--dir=/lib64",
+                "--dir=/etc",
+                "--dir=/usr/libexec",
+                "--dir=/usr/include",
+                # MUHIM: Box papkasiga yozish ruxsatini berish (Docker uchun maxsus)
+                f"--dir=/box={self.box_path}:rw", 
+                "--env=PATH=/usr/bin:/bin",
+                "--env=HOME=/tmp",
+                "--meta=meta.txt",
+                "--stdout=out.txt",
+                "--stderr=err.txt",
+                "--",
+            ]
+            isolate_cmd.extend(cmd)
+            
+            # Meta va Stdout fayllarini tozalab olamiz (eski ma'lumotlar xalaqit bermasligi uchun)
+            for f in ["out.txt", "err.txt", "meta.txt"]:
+                if (self.box_path / f).exists():
+                    (self.box_path / f).unlink()
 
-        def read_box_file(name: str) -> str:
-            p = self.box_path / name
-            return p.read_text(errors="ignore").strip() if p.exists() else ""
+            # Buyruqni bajarish
+            result = subprocess.run(isolate_cmd, cwd=self.box_path, capture_output=True, text=True)
 
-        return {
-            "stdout": read_box_file("out.txt"),
-            "stderr": read_box_file("err.txt"),
-            "exitcode": result.returncode,
-            "meta": read_box_file("meta.txt")
-        }
+            def read_box_file(name: str) -> str:
+                p = self.box_path / name
+                if p.exists():
+                    return p.read_text(errors="ignore").strip()
+                return ""
+
+            return {
+                "stdout": read_box_file("out.txt"),
+                "stderr": read_box_file("err.txt"),
+                "exitcode": result.returncode,
+                "meta": read_box_file("meta.txt")
+            }
+
 
 # =====================================================
 # TILLARNI TEST QILISH
