@@ -93,6 +93,7 @@ class Isolate:
             "exitcode": result.returncode,
         }
 
+
 def test_language(lang: str, code: str):
     print(f"\n[+] Testing {lang.upper()}...")
     iso = Isolate(box_id=1)
