@@ -11,35 +11,19 @@ def wrap_code(user_code: str, wrapper: dict) -> str:
     top = wrapper.get("top_code", "")
     bottom = wrapper.get("bottom_code", "")
     return f"{top}\n{user_code}\n{bottom}"
-
-
 async def stream_execution(
     language: str,
     code: str,
     test_cases: list,
     is_custom_run: bool = False
 ) -> AsyncGenerator[dict, None]:
-    """
-    Test case'larni stream qilib bajarish
-    
-    Args:
-        language: Dasturlash tili
-        code: Bajarish uchun kod
-        test_cases: Test case'lar ro'yxati
-        is_custom_run: Custom run rejimi (True) yoki Submit (False)
-    
-    Yields:
-        dict: Bajarilish jarayoni haqida ma'lumotlar
-    """
     
     total = len(test_cases)
     yield {"type": "start", "total": total}
     
-    passed = 0
-    failed = 0
+    passed, failed = 0, 0
     
     for idx, test in enumerate(test_cases):
-        # Test case'ni bajarish
         result = await execute_code(
             language=language,
             code=code,
@@ -47,57 +31,56 @@ async def stream_execution(
             expected_output=test.get("output_txt", "")
         )
         
-        # NEEDS_INPUT holatini tekshirish (birinchi navbatda!)
+        # 1. Kirish kutilayotgan holat (Interactive mode emas, xatolik deb olinadi)
         if result.get("status") == "NEEDS_INPUT":
             yield {
-                "type": "needs_input",
-                "message": "Program requires input from stdin",
-                "index": idx,
-                "error": result.get("error", "")
+                "type": "error",
+                "message": "Programma kiritilgan ma'lumotni o'qiy olmadi (Stdin error)",
+                "index": idx
             }
             return
-        
-        # ====== CUSTOM RUN MODE ======
+
+        # 2. Custom Run Natijasi
         if is_custom_run:
             yield {
                 "type": "custom",
                 "index": idx,
-                "result": {
-                    "status": result["status"],
-                    "output": result.get("output", ""),
-                    "error": result.get("error", ""),
-                    "time": result.get("time", 0)
-                }
+                "status": result["status"],
+                "input": test.get("input_txt"),
+                "output": result.get("output"),
+                "expected": test.get("output_txt"),
+                "error": result.get("error"),
+                "time": result.get("time")
             }
-            continue
         
-        # ====== SUBMIT MODE ======
-        # Passed/Failed hisobi
-        if result["status"] == "AC":
-            passed += 1
+        # 3. Submit Natijasi
         else:
-            failed += 1
+            if result["status"] == "AC":
+                passed += 1
+            else:
+                failed += 1
+            
+            yield {
+                "type": "test",
+                "index": idx,
+                "is_sample": test.get("is_sample", False),
+                "result": result,
+                "progress": round((idx + 1) / total * 100, 2)
+            }
+            
+            # Agar Submit bo'lsa va xato chiqsa, to'xtatish (ixtiyoriy, LeetCode kabi)
+            if result["status"] != "AC":
+                break
         
-        yield {
-            "type": "test",
-            "index": idx,
-            "is_sample": test.get("is_sample", False),
-            "result": result,
-            "progress": round((idx + 1) / total * 100, 2),
-            "passed": passed,
-            "failed": failed
-        }
-        
-        # Kichik kutish (stream effect uchun)
         await asyncio.sleep(0.01)
     
-    # Yakuniy natija
+    # Yakuniy xulosa
     yield {
         "type": "complete",
         "summary": {
             "total": total,
             "passed": passed,
             "failed": failed,
-            "success_rate": round(passed / total * 100, 2) if total > 0 else 0
+            "success_rate": round(passed/total*100, 2) if total > 0 else 0
         } if not is_custom_run else None
     }

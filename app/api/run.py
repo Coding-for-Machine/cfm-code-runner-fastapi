@@ -29,105 +29,83 @@ class RunRequest(BaseModel):
 api = APIRouter(tags=["Code Execution"])
 
 
-@api.post("/run/{problem_slug}")
-async def run_code(problem_slug: str, request: RunRequest):
+@api.post("/run")
+async def run_code_endpoint(request: RunRequest):
     """
-    Code execution endpoint:
-    - Run mode: custom_input mavjud
-    - Submit mode: custom_input yo'q, faqat test_cases
+    RUN MODE:
+    - Wrapper ishlatilmaydi (faqat user kodi).
+    - DB dan test olinmaydi.
+    - Faqat frontenddan kelgan test_cases va custom_input ishlatiladi.
     """
-    
-    async def event_generator():
-        try:
-            # DB dan ma'lumotlarni olish
-            data = await get_tests_and_execution(problem_slug, request.language_name)
-            
-            # ====== RUN MODE (custom_input mavjud) ======
-            if request.custom_input:
-                # Wrapper bor/yo'qligini tekshirish
-                has_wrapper = data and data.get("execution_wrapper")
-                
-                if has_wrapper:
-                    final_code = wrap_code(request.code, data["execution_wrapper"])
-                else:
-                    final_code = request.code
-                
-                # Custom input test case
-                custom_test = {
-                    "input_txt": request.custom_input.value,
-                    "output_txt": "",
-                    "is_sample": False
-                }
-                
-                # Barcha test cases'larni yig'ish
-                run_tests = [custom_test]
-                if request.test_cases:
-                    run_tests.extend([
-                        {
-                            "input_txt": tc.input_txt,
-                            "output_txt": tc.output_txt,
-                            "is_sample": tc.is_sample
-                        } 
-                        for tc in request.test_cases
-                    ])
-                
-                # Stream execution
-                async for event in stream_execution(
-                    language=request.language_name,
-                    code=final_code,
-                    test_cases=run_tests,
-                    is_custom_run=True
-                ):
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            
-            # ====== SUBMIT MODE (custom_input yo'q) ======
-            else:
-                if not data or not data.get("test_cases"):
-                    raise HTTPException(
-                        status_code=400, 
-                        detail="Test cases not found for this problem"
-                    )
-                
-                # DB test cases + user test cases
-                all_test_cases = data["test_cases"].copy()
-                if request.test_cases:
-                    all_test_cases.extend([
-                        {
-                            "input_txt": tc.input_txt,
-                            "output_txt": tc.output_txt,
-                            "is_sample": tc.is_sample
-                        } 
-                        for tc in request.test_cases
-                    ])
-                
-                # Wrapper bilan kod birlashtirish
-                final_code = wrap_code(request.code, data["execution_wrapper"])
-                
-                # Submit stream execution
-                async for event in stream_execution(
-                    language=request.language_name,
-                    code=final_code,
-                    test_cases=all_test_cases,
-                    is_custom_run=False
-                ):
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    async def run_generator():
+        # Testlarni yig'ish: Custom input (agar bo'lsa) + qo'shimcha testlar
+        run_tests = []
+        if request.custom_input:
+            run_tests.append({
+                "input_txt": request.custom_input.value,
+                "output_txt": "",
+                "is_sample": False
+            })
         
-        except HTTPException as he:
-            error_event = {"type": "error", "error": he.detail}
-            yield f"data: {json.dumps(error_event)}\n\n"
-        except Exception as e:
-            error_event = {"type": "error", "error": str(e)}
-            yield f"data: {json.dumps(error_event)}\n\n"
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive"
-        }
-    )
+        if request.test_cases:
+            for tc in request.test_cases:
+                run_tests.append({
+                    "input_txt": tc.input_txt,
+                    "output_txt": tc.output_txt,
+                    "is_sample": tc.is_sample
+                })
+
+        if not run_tests:
+            # Agar hech qanday input bo'lmasa, bo'sh input bilan bitta test
+            run_tests.append({"input_txt": "", "output_txt": "", "is_sample": False})
+
+        async for event in stream_execution(
+            language=request.language_name,
+            code=request.code, # Wrapper yo'q
+            test_cases=run_tests,
+            is_custom_run=True
+        ):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(run_generator(), media_type="text/event-stream")
+
+
+@api.post("/submit/{problem_slug}")
+async def submit_code_endpoint(problem_slug: str, request: RunRequest):
+    """
+    SUBMIT MODE:
+    - DB dan testlar va wrapper olinadi.
+    - Frontenddan kelgan testlar DB testlariga qo'shiladi.
+    - Kod wrapper bilan o'raladi.
+    """
+    # DB dan ma'lumotlarni olish
+    data = await get_tests_and_execution(problem_slug, request.language_name)
+    if not data:
+        raise HTTPException(status_code=404, detail="Problem yoki Language topilmadi")
+
+    async def submit_generator():
+        # 1. Kodni wrapper bilan o'rash
+        final_code = wrap_code(request.code, data.get("execution_wrapper"))
+        
+        # 2. Testlarni birlashtirish: DB testlari + Client testlari
+        all_tests = data["test_cases"].copy()
+        if request.test_cases:
+            for tc in request.test_cases:
+                all_tests.append({
+                    "input_txt": tc.input_txt,
+                    "output_txt": tc.output_txt,
+                    "is_sample": tc.is_sample
+                })
+
+        async for event in stream_execution(
+            language=request.language_name,
+            code=final_code,
+            test_cases=all_tests,
+            is_custom_run=False
+        ):
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(submit_generator(), media_type="text/event-stream")
 
 
 @api.get("/status")
