@@ -6,7 +6,7 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "python": {
         "file": "solution.py",
         "compile": None,
-        "run": ["/usr/local/bin/python3", "solution.py"],
+        "run": ["/usr/bin/python3", "solution.py"],
     },
     "javascript": {
         "file": "solution.js",

@@ -3,7 +3,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 from fastapi.responses import StreamingResponse
-from core.runner import execute_code
 from core.stream import stream_execution, wrap_code
 from core.query import get_tests_and_execution
 
