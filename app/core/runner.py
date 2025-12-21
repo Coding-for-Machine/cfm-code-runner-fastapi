@@ -85,11 +85,11 @@ async def execute_code(language: str, code: str, test_input: str, expected_outpu
             "status": status, 
             "message": message, 
             "is_accepted": is_accepted,
-            "stdout": run_res["stdout"], 
-            "stderr": run_res["stderr"],
+            "output": run_res["stdout"], 
+            "error": run_res["stderr"],
             "time": meta["time"], 
-            "memory_kb": meta["memory_kb"],
-            "exitcode": meta["exitcode"]
+            "memory": meta["memory_kb"],
+            "exitcode": meta.get("exitcode", 0),
         }
         
     except Exception as e:

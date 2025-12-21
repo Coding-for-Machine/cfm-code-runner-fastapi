@@ -73,7 +73,7 @@ class Isolate:
             "--stdin=input.txt",  # <--- BU QATORNI QO'SHING
             "--stdout=out.txt",
             "--stderr=err.txt",
-            "--meta=meta.txt",
+            f"--meta={meta_file}",
         ]
         
         for env in env_vars:
