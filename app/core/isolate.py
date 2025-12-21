@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Tizim binar fayllari yo'llari (which orqali tekshirilgan)
 LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "python": {
         "file": "solution.py",
@@ -11,12 +12,13 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "javascript": {
         "file": "solution.js",
         "compile": None,
-        "run": ["/usr/bin/node", "solution.js"],
+        # Node.js uchun --jitless va --max-old-space-size xotira xatolarini oldini oladi
+        "run": ["/usr/bin/node", "--max-old-space-size=256", "--jitless", "solution.js"],
     },
     "typescript": {
         "file": "solution.ts",
-        "compile": ["/usr/bin/node", "/usr/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
-        "run": ["/usr/bin/node", "solution.js"],
+        "compile": ["/usr/bin/node", "--max-old-space-size=512", "/usr/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
+        "run": ["/usr/bin/node", "--max-old-space-size=256", "--jitless", "solution.js"],
     },
     "go": {
         "file": "solution.go",
@@ -49,41 +51,36 @@ class Isolate:
         stdout_file = self.box / "out.txt"
         stderr_file = self.box / "err.txt"
         
-        # INPUTNI YOZISH
         (self.box / "input.txt").write_text(stdin_data or "", encoding="utf-8")
 
-        # DIQQAT: Bu yerda oxiridagi vergulni olib tashladik
         isolate_cmd = [
             "isolate",
             f"--box-id={self.box_id}",
             "--run",
             "--processes=100",
             "--time=15",
-            "--mem=1024000",   # 1GB RAM
+            "--mem=2048000",   # 2GB RAM (Node.js/Go virtual memory uchun zarur)
             "--dir=/usr/bin",
             "--dir=/usr/local/bin",
-            "--dir=/usr/libexec", # C++ ld uchun
+            "--dir=/usr/libexec",  # C++ 'ld' (linker) uchun JUDA MUHIM
             "--dir=/usr/lib",
             "--dir=/usr/lib64",
             "--dir=/lib",
             "--dir=/lib64",
+            "--dir=/usr/include",  # C++ headerlari uchun
             "--dir=/etc",
-            "--dir=/usr/include", # C++ headerlar uchun
+            "--env=PATH=/usr/bin:/usr/local/bin",
+            "--env=HOME=/tmp",
             "--stdin=input.txt",
             "--stdout=out.txt",
             "--stderr=err.txt",
             f"--meta={meta_file}",
+            "--",
         ]
         
-        # Env o'zgaruvchilarni qo'shish
-        for env in env_vars:
-            isolate_cmd.append(f"--env={env}")
-            
-        # Buyruqni (cmd) oxiriga qo'shish
-        isolate_cmd.append("--")
+        # O'zgaruvchini tuple'ga aylanib qolishidan saqlash (vergul olib tashlandi)
         isolate_cmd.extend(cmd)
         
-        # Subprocessni yurgizish
         result = subprocess.run(isolate_cmd, cwd=self.box, capture_output=True, text=True)
 
         def read_file(path: Path) -> str:
@@ -95,7 +92,6 @@ class Isolate:
             "meta": read_file(meta_file),
             "exitcode": result.returncode,
         }
-
 
 def test_language(lang: str, code: str):
     print(f"\n[+] Testing {lang.upper()}...")
