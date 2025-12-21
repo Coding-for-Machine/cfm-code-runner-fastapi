@@ -11,7 +11,7 @@ async def test_python_edge_cases():
     # 3. Nolga bo'lish (RE)
     res = await execute_code("python", "print(1/0)", "", "")
     assert res["status"] == "RE"
-    assert "ZeroDivisionError" in res["stderr"]
+    assert "ZeroDivisionError" in res["error"]
 
 @pytest.mark.asyncio
 async def test_js_ts_cases():

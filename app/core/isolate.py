@@ -11,12 +11,12 @@ LANGUAGE_CONFIGS: Dict[str, Dict] = {
     "javascript": {
         "file": "solution.js",
         "compile": None,
-        "run": ["/opt/nodejs/bin/node", "solution.js"],
+        "run": ["/usr/bin/node", "solution.js"],
     },
     "typescript": {
         "file": "solution.ts",
-        "compile": ["/opt/nodejs/bin/node", "/opt/nodejs/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
-        "run": ["/opt/nodejs/bin/node", "solution.js"],
+        "compile": ["/usr/bin/node", "/usr/bin/tsc", "solution.ts", "--target", "ES2020", "--module", "CommonJS"],
+        "run": ["/usr/bin/node", "solution.js"],
     },
     "go": {
         "file": "solution.go",
@@ -56,25 +56,19 @@ class Isolate:
             "isolate",
             f"--box-id={self.box_id}",
             "--run",
-            "--processes=100",
-            "--time=15",
-            "--mem=2048000",
+            # ... boshqa parametrlar ...
             "--dir=/usr/bin",
             "--dir=/usr/lib",
             "--dir=/lib",
             "--dir=/lib64",
-            "--dir=/usr/local/bin",
-            "--dir=/opt/nodejs",
-            "--dir=/usr/libexec",
-            "--dir=/usr/include",
             "--dir=/etc",
-            "--env=PATH=/usr/bin:/usr/local/bin:/opt/nodejs/bin",
-            "--env=HOME=/tmp",
-            "--stdin=input.txt",  # <--- BU QATORNI QO'SHING
+            "--dir=/usr/local/lib", # Ba'zi kutubxonalar uchun
+            "--stdin=input.txt",
             "--stdout=out.txt",
             "--stderr=err.txt",
-            f"--meta={meta_file}",
-        ]
+            f"--meta={self.box / 'meta.txt'}",
+            "--",
+        ] + cmd,
         
         for env in env_vars:
             isolate_cmd.append(f"--env={env}")
