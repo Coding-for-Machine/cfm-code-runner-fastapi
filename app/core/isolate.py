@@ -49,32 +49,38 @@ class Isolate:
         stdout_file = self.box / "out.txt"
         stderr_file = self.box / "err.txt"
         
-        # INPUTNI YOZISH (MUHIM!)
+        # INPUTNI YOZISH
         (self.box / "input.txt").write_text(stdin_data or "", encoding="utf-8")
 
+        # DIQQAT: Bu yerda oxiridagi vergulni olib tashladik
         isolate_cmd = [
             "isolate",
             f"--box-id={self.box_id}",
             "--run",
-            # ... boshqa parametrlar ...
+            "--processes=100",
+            "--time=15",
+            "--mem=512000",
             "--dir=/usr/bin",
             "--dir=/usr/lib",
             "--dir=/lib",
             "--dir=/lib64",
             "--dir=/etc",
-            "--dir=/usr/local/lib", # Ba'zi kutubxonalar uchun
+            "--dir=/usr/local/lib",
             "--stdin=input.txt",
             "--stdout=out.txt",
             "--stderr=err.txt",
-            f"--meta={self.box / 'meta.txt'}",
-            "--",
-        ] + cmd,
+            f"--meta={meta_file}",
+        ]
         
+        # Env o'zgaruvchilarni qo'shish
         for env in env_vars:
             isolate_cmd.append(f"--env={env}")
             
-        isolate_cmd.extend(["--", *cmd])
+        # Buyruqni (cmd) oxiriga qo'shish
+        isolate_cmd.append("--")
+        isolate_cmd.extend(cmd)
         
+        # Subprocessni yurgizish
         result = subprocess.run(isolate_cmd, cwd=self.box, capture_output=True, text=True)
 
         def read_file(path: Path) -> str:
@@ -83,7 +89,7 @@ class Isolate:
         return {
             "stdout": read_file(stdout_file),
             "stderr": read_file(stderr_file),
-            "meta": read_file(meta_file), # <--- META o'qilishi shart
+            "meta": read_file(meta_file),
             "exitcode": result.returncode,
         }
 
