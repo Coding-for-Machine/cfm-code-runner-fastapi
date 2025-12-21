@@ -21,6 +21,7 @@ async def stream_execution(
     passed, failed = 0, 0
     
     for idx, test in enumerate(test_cases):
+        print(f"test-{idx}---test")
         result = await execute_code(
             language=language,
             code=code,
@@ -53,10 +54,14 @@ async def stream_execution(
                 "type": "test",
                 "index": idx,
                 "is_sample": test.get("is_sample", False),
-                "result": result, # Natija ichida output va error bor
-                "progress": round((idx + 1) / total * 100, 2)
+                "status": result["status"],
+                "input": test.get("input_txt"),
+                "output": result.get("output"),
+                "expected": test.get("output_txt"),
+                "error": result.get("error"),
+                "time": result.get("time")
             }
-            if result["status"] != "AC": break
+            # if result["status"] != "AC": break
             
         await asyncio.sleep(0.01)
     

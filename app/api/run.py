@@ -60,7 +60,7 @@ async def submit_code_endpoint(problem_slug: str, request: RunRequest):
     async def submit_generator():
         final_code = wrap_code(request.code, data.get("execution_wrapper"))
         all_tests = data["test_cases"] # Faqat DB testlari
-
+        print("test--", all_tests)
         async for event in stream_execution(
             language=request.language_name,
             code=final_code,
