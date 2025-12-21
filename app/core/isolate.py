@@ -59,13 +59,16 @@ class Isolate:
             "--run",
             "--processes=100",
             "--time=15",
-            "--mem=512000",
+            "--mem=1024000",   # 1GB RAM
             "--dir=/usr/bin",
+            "--dir=/usr/local/bin",
+            "--dir=/usr/libexec", # C++ ld uchun
             "--dir=/usr/lib",
+            "--dir=/usr/lib64",
             "--dir=/lib",
             "--dir=/lib64",
             "--dir=/etc",
-            "--dir=/usr/local/lib",
+            "--dir=/usr/include", # C++ headerlar uchun
             "--stdin=input.txt",
             "--stdout=out.txt",
             "--stderr=err.txt",
