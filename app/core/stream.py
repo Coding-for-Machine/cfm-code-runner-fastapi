@@ -1,23 +1,20 @@
 import asyncio
+import json
 from typing import AsyncGenerator
 from core.runner import execute_code
 
-
 def wrap_code(user_code: str, wrapper: dict) -> str:
-    """User code'ni wrapper bilan birlashtirish"""
-    if not wrapper:
-        return user_code
-    
+    if not wrapper: return user_code
     top = wrapper.get("top_code", "")
     bottom = wrapper.get("bottom_code", "")
     return f"{top}\n{user_code}\n{bottom}"
+
 async def stream_execution(
     language: str,
     code: str,
     test_cases: list,
     is_custom_run: bool = False
 ) -> AsyncGenerator[dict, None]:
-    
     total = len(test_cases)
     yield {"type": "start", "total": total}
     
@@ -31,17 +28,12 @@ async def stream_execution(
             expected_output=test.get("output_txt", "")
         )
         
-        # 1. Kirish kutilayotgan holat (Interactive mode emas, xatolik deb olinadi)
         if result.get("status") == "NEEDS_INPUT":
-            yield {
-                "type": "error",
-                "message": "Programma kiritilgan ma'lumotni o'qiy olmadi (Stdin error)",
-                "index": idx
-            }
+            yield {"type": "error", "message": "Programma input kutyapti", "index": idx}
             return
 
-        # 2. Custom Run Natijasi
         if is_custom_run:
+            # RUN rejimida har doim outputni qaytaramiz
             yield {
                 "type": "custom",
                 "index": idx,
@@ -52,35 +44,26 @@ async def stream_execution(
                 "error": result.get("error"),
                 "time": result.get("time")
             }
-        
-        # 3. Submit Natijasi
         else:
-            if result["status"] == "AC":
-                passed += 1
-            else:
-                failed += 1
+            # SUBMIT rejimida AC/WA hisobini yuritamiz
+            if result["status"] == "AC": passed += 1
+            else: failed += 1
             
             yield {
                 "type": "test",
                 "index": idx,
                 "is_sample": test.get("is_sample", False),
-                "result": result,
+                "result": result, # Natija ichida output va error bor
                 "progress": round((idx + 1) / total * 100, 2)
             }
+            if result["status"] != "AC": break
             
-            # Agar Submit bo'lsa va xato chiqsa, to'xtatish (ixtiyoriy, LeetCode kabi)
-            if result["status"] != "AC":
-                break
-        
         await asyncio.sleep(0.01)
     
-    # Yakuniy xulosa
     yield {
         "type": "complete",
         "summary": {
-            "total": total,
-            "passed": passed,
-            "failed": failed,
+            "total": total, "passed": passed, "failed": failed,
             "success_rate": round(passed/total*100, 2) if total > 0 else 0
         } if not is_custom_run else None
     }
