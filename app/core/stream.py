@@ -7,6 +7,7 @@ def wrap_code(user_code: str, wrapper: dict) -> str:
     if not wrapper: return user_code
     top = wrapper.get("top_code", "")
     bottom = wrapper.get("bottom_code", "")
+    print("user-code", f"{top}\n{user_code}\n{bottom}")
     return f"{top}\n{user_code}\n{bottom}"
 
 async def stream_execution(
@@ -21,7 +22,7 @@ async def stream_execution(
     passed, failed = 0, 0
     
     for idx, test in enumerate(test_cases):
-        print(f"test-{idx}---test")
+        print(f"test-{idx}--{test}-test")
         result = await execute_code(
             language=language,
             code=code,
@@ -32,6 +33,9 @@ async def stream_execution(
         if result.get("status") == "NEEDS_INPUT":
             yield {"type": "error", "message": "Programma input kutyapti", "index": idx}
             return
+        print("------------------------------start----------------------------------------")
+        print(result)
+        print("--------------------------------end--------------------------------------")
 
         if is_custom_run:
             # RUN rejimida har doim outputni qaytaramiz
